@@ -407,18 +407,8 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 
-			var departureStation, arrivalStation Station
-			query = "SELECT * FROM station_master WHERE name=?"
-
-			err = dbx.Get(&departureStation, query, reservation.Departure)
-			if err != nil {
-				panic(err)
-			}
-			err = dbx.Get(&arrivalStation, query, reservation.Arrival)
-			if err != nil {
-				panic(err)
-			}
-
+			departureStation, _ := getStationByName[reservation.Departure]
+			arrivalStation, _ := getStationByName[reservation.Arrival]
 			if train.IsNobori {
 				// 上り
 				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
