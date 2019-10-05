@@ -1,1 +1,2 @@
-go run *.go
+isutrain: $(wildcard *.go)
+	go build -o $@
