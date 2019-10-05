@@ -7,7 +7,7 @@ import (
 
 const (
 	sessionName   = "session_isutrain"
-	availableDays = 10
+	availableDays = 50
 )
 
 var (
