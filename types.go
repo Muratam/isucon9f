@@ -36,7 +36,7 @@ type Seat struct {
 	IsSmokingSeat bool   `json:"is_smoking_seat" db:"is_smoking_seat"`
 }
 
-// 70272
+// train_master(70272)
 type Train struct {
 	Date         time.Time `json:"date" db:"date"`
 	DepartureAt  string    `json:"departure_at" db:"departure_at"`

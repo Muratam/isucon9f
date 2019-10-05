@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -32,20 +33,22 @@ func tryUserFromDBSQLX() {
 		panic(err)
 	}
 	defer dbx.Close()
-	type Seat struct {
-		TrainClass    string `json:"train_class" db:"train_class"`
-		CarNumber     int    `json:"car_number" db:"car_number"`
-		SeatColumn    string `json:"seat_column" db:"seat_column"`
-		SeatRow       int    `json:"seat_row" db:"seat_row"`
-		SeatClass     string `json:"seat_class" db:"seat_class"`
-		IsSmokingSeat bool   `json:"is_smoking_seat" db:"is_smoking_seat"`
+	type Train struct {
+		Date         time.Time `json:"date" db:"date"`
+		DepartureAt  string    `json:"departure_at" db:"departure_at"`
+		TrainClass   string    `json:"train_class" db:"train_class"`
+		TrainName    string    `json:"train_name" db:"train_name"`
+		StartStation string    `json:"start_station" db:"start_station"`
+		LastStation  string    `json:"last_station" db:"last_station"`
+		IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
 	}
-	users := []Seat{}
-	err = dbx.Select(&users, "SELECT * FROM `seat_master`")
+
+	users := []Train{}
+	err = dbx.Select(&users, "SELECT * FROM `train_master`")
 	if err != nil {
 		panic(err)
 	}
-	Output("initialSeats", users)
+	Output("initialTrains", users)
 }
 
 func Normalize(x reflect.Type) string {
