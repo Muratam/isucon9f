@@ -2,6 +2,7 @@ package main
 
 import "time"
 
+// station_master (82)
 type Station struct {
 	ID                int     `json:"id" db:"id"`
 	Name              string  `json:"name" db:"name"`
@@ -11,11 +12,13 @@ type Station struct {
 	IsStopLocal       bool    `json:"is_stop_local" db:"is_stop_local"`
 }
 
+// distance_fare_master (10)
 type DistanceFare struct {
 	Distance float64 `json:"distance" db:"distance"`
 	Fare     int     `json:"fare" db:"fare"`
 }
 
+// fare_master (81)
 type Fare struct {
 	TrainClass     string    `json:"train_class" db:"train_class"`
 	SeatClass      string    `json:"seat_class" db:"seat_class"`
@@ -23,6 +26,17 @@ type Fare struct {
 	FareMultiplier float64   `json:"fare_multiplier" db:"fare_multiplier"`
 }
 
+// seat_master (3942)
+type Seat struct {
+	TrainClass    string `json:"train_class" db:"train_class"`
+	CarNumber     int    `json:"car_number" db:"car_number"`
+	SeatColumn    string `json:"seat_column" db:"seat_column"`
+	SeatRow       int    `json:"seat_row" db:"seat_row"`
+	SeatClass     string `json:"seat_class" db:"seat_class"`
+	IsSmokingSeat bool   `json:"is_smoking_seat" db:"is_smoking_seat"`
+}
+
+// 70272
 type Train struct {
 	Date         time.Time `json:"date" db:"date"`
 	DepartureAt  string    `json:"departure_at" db:"departure_at"`
@@ -31,15 +45,6 @@ type Train struct {
 	StartStation string    `json:"start_station" db:"start_station"`
 	LastStation  string    `json:"last_station" db:"last_station"`
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
-}
-
-type Seat struct {
-	TrainClass    string `json:"train_class" db:"train_class"`
-	CarNumber     int    `json:"car_number" db:"car_number"`
-	SeatColumn    string `json:"seat_column" db:"seat_column"`
-	SeatRow       int    `json:"seat_row" db:"seat_row"`
-	SeatClass     string `json:"seat_class" db:"seat_class"`
-	IsSmokingSeat bool   `json:"is_smoking_seat" db:"is_smoking_seat"`
 }
 
 type Reservation struct {
