@@ -379,12 +379,12 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 		s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
 
-		seatReservationList := []SeatReservation{}
+		reservationList := []Reservation{}
 
-		query := `SELECT s.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
+		query := `SELECT r.* FROM seat_reservations s, reservations r WHERE r.reservation_id=s.reservation_id AND r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
 
 		err = dbx.Select(
-			&seatReservationList, query,
+			&reservationList, query,
 			date.Format("2006/01/02"),
 			seat.TrainClass,
 			trainName,
@@ -397,16 +397,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Println(seatReservationList)
-
-		for _, seatReservation := range seatReservationList {
-			reservation := Reservation{}
-			query = "SELECT * FROM reservations WHERE reservation_id=?"
-			err = dbx.Get(&reservation, query, seatReservation.ReservationId)
-			if err != nil {
-				panic(err)
-			}
-
+		for _, reservation := range reservationList {
 			var departureStation, arrivalStation Station
 			query = "SELECT * FROM station_master WHERE name=?"
 
