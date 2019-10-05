@@ -265,18 +265,33 @@ func getUsableTrainClassList(fromStation Station, toStation Station) []string {
 	return ret
 }
 
-func (train Train) getAvailableSeats(fromStation Station, toStation Station, seatClass string, isSmokingSeat bool) ([]Seat, error) {
+func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station) (int, int, int, int, error) {
 	// 指定種別の空き座席を返す
 
 	var err error
 
 	// 全ての座席を取得する
 	// query := "SELECT * FROM seat_master WHERE train_class=? AND seat_class=? AND is_smoking_seat=?"
-	seatList := getSeatsWithIsSmoking(isSmokingSeat, seatClass, train.TrainClass)
-	availableSeatMap := map[string]Seat{}
+	premium_avail_seats := getSeatsWithIsSmoking(false, "premium", train.TrainClass)
+	premium_smoke_avail_seats := getSeatsWithIsSmoking(true, "premium", train.TrainClass)
+	reserved_avail_seats := getSeatsWithIsSmoking(false, "reserved", train.TrainClass)
+	reserved_smoke_avail_seats := getSeatsWithIsSmoking(true, "reserved", train.TrainClass)
+	availableSeatMap1 := map[int]Seat{}
+	availableSeatMap2 := map[int]Seat{}
+	availableSeatMap3 := map[int]Seat{}
+	availableSeatMap4 := map[int]Seat{}
 	// TODO: ここは先にキャッシュできる
-	for _, seat := range seatList {
-		availableSeatMap[fmt.Sprintf("%d_%d_%s", seat.CarNumber, seat.SeatRow, seat.SeatColumn)] = seat
+	for _, seat := range premium_avail_seats {
+		availableSeatMap1[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+	}
+	for _, seat := range premium_smoke_avail_seats {
+		availableSeatMap2[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+	}
+	for _, seat := range reserved_avail_seats {
+		availableSeatMap3[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+	}
+	for _, seat := range reserved_smoke_avail_seats {
+		availableSeatMap4[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
 	}
 
 	// すでに取られている予約を取得する
@@ -284,6 +299,8 @@ func (train Train) getAvailableSeats(fromStation Station, toStation Station, sea
 	SELECT sr.reservation_id, sr.car_number, sr.seat_row, sr.seat_column
 	FROM seat_reservations sr, reservations r, seat_master s, station_master std, station_master sta
 	WHERE
+		r.train_name=? AND
+		r.train_class=? AND
 		r.reservation_id=sr.reservation_id AND
 		s.train_class=r.train_class AND
 		s.car_number=sr.car_number AND
@@ -299,19 +316,18 @@ func (train Train) getAvailableSeats(fromStation Station, toStation Station, sea
 	}
 
 	seatReservationList := []SeatReservation{}
-	err = dbx.Select(&seatReservationList, query, fromStation.ID, fromStation.ID, toStation.ID, toStation.ID, fromStation.ID, toStation.ID)
+	err = dbx.Select(&seatReservationList, query, train.TrainName, train.TrainClass, fromStation.ID, fromStation.ID, toStation.ID, toStation.ID, fromStation.ID, toStation.ID)
 	if err != nil {
-		return nil, err
+		return 0, 0, 0, 0, err
 	}
 
 	for _, seatReservation := range seatReservationList {
-		key := fmt.Sprintf("%d_%d_%s", seatReservation.CarNumber, seatReservation.SeatRow, seatReservation.SeatColumn)
-		delete(availableSeatMap, key)
+		key := seatReservation.CarNumber * 1000 + seatReservation.SeatRow * 10 + SeatClassNameToIndex(seatReservation.SeatColumn)
+		delete(availableSeatMap1, key)
+		delete(availableSeatMap2, key)
+		delete(availableSeatMap3, key)
+		delete(availableSeatMap4, key)
 	}
 
-	ret := []Seat{}
-	for _, seat := range availableSeatMap {
-		ret = append(ret, seat)
-	}
-	return ret, nil
+	return len(availableSeatMap1), len(availableSeatMap2), len(availableSeatMap3), len(availableSeatMap4), nil
 }
