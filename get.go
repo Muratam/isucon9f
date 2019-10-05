@@ -191,53 +191,37 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			premium_avail_seats, err := train.getAvailableSeats(fromStation, toStation, "premium", false)
-			if err != nil {
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			premium_smoke_avail_seats, err := train.getAvailableSeats(fromStation, toStation, "premium", true)
-			if err != nil {
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-
-			reserved_avail_seats, err := train.getAvailableSeats(fromStation, toStation, "reserved", false)
-			if err != nil {
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			reserved_smoke_avail_seats, err := train.getAvailableSeats(fromStation, toStation, "reserved", true)
+			premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats, err := train.getAvailableSeatsCount(fromStation, toStation)
 			if err != nil {
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
 
 			premium_avail := "○"
-			if len(premium_avail_seats) == 0 {
+			if premium_avail_seats == 0 {
 				premium_avail = "×"
-			} else if len(premium_avail_seats) < 10 {
+			} else if premium_avail_seats < 10 {
 				premium_avail = "△"
 			}
 
 			premium_smoke_avail := "○"
-			if len(premium_smoke_avail_seats) == 0 {
+			if premium_smoke_avail_seats == 0 {
 				premium_smoke_avail = "×"
-			} else if len(premium_smoke_avail_seats) < 10 {
+			} else if premium_smoke_avail_seats < 10 {
 				premium_smoke_avail = "△"
 			}
 
 			reserved_avail := "○"
-			if len(reserved_avail_seats) == 0 {
+			if reserved_avail_seats == 0 {
 				reserved_avail = "×"
-			} else if len(reserved_avail_seats) < 10 {
+			} else if reserved_avail_seats < 10 {
 				reserved_avail = "△"
 			}
 
 			reserved_smoke_avail := "○"
-			if len(reserved_smoke_avail_seats) == 0 {
+			if reserved_smoke_avail_seats == 0 {
 				reserved_smoke_avail = "×"
-			} else if len(reserved_smoke_avail_seats) < 10 {
+			} else if reserved_smoke_avail_seats < 10 {
 				reserved_smoke_avail = "△"
 			}
 
