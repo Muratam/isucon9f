@@ -97,7 +97,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 		query := "SELECT * FROM train_master use index () WHERE date=? AND train_class IN (?) AND is_nobori=?"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
-		query := "SELECT * FROM train_master use index () WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
+		query := "SELECT * FROM train_master use index () WHERE date=? AND is_nobori=? AND train_class=?"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
