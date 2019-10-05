@@ -1,5 +1,7 @@
 package main
 
+import "sort"
+
 var initialSeats = []Seat{
 	Seat{"最速", 1, "A", 1, "non-reserved", false},
 	Seat{"最速", 1, "B", 1, "non-reserved", false},
@@ -4015,7 +4017,7 @@ var NonSmokingSeatClassTrainClassSeats = func() [][][]Seat {
 	return result
 }()
 
-func getSeats(isSmoking bool, seatClass string, trainClass string) []Seat {
+func getSeatsWithIsSmoking(isSmoking bool, seatClass string, trainClass string) []Seat {
 	si := SeatClassNameToIndex(seatClass)
 	ti := trainClassNameToIndex(trainClass)
 	if isSmoking {
@@ -4025,5 +4027,17 @@ func getSeats(isSmoking bool, seatClass string, trainClass string) []Seat {
 	}
 }
 
-// SELECT * FROM seat_master
-// WHERE train_class=? AND seat_class=? AND is_smoking_seat=?
+// "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
+func getSeatsOrderBySeatRowSeatColumn(seatClass string, trainClass string) []Seat {
+	// WARN: もっと速くできる
+	is0 := getSeatsWithIsSmoking(false, seatClass, trainClass)
+	is1 := getSeatsWithIsSmoking(true, seatClass, trainClass)
+	result := append(is0, is1...)
+	sort.Slice(&result, func(i, j int) bool {
+		return result[i].SeatRow < result[j].SeatRow
+	})
+	sort.Slice(&result, func(i, j int) bool {
+		return result[i].SeatColumn < result[j].SeatColumn
+	})
+	return result
+}

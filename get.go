@@ -334,31 +334,18 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	var fromStation, toStation Station
-	query = "SELECT * FROM station_master WHERE name=?"
-
 	// From
-	err = dbx.Get(&fromStation, query, fromName)
-	if err == sql.ErrNoRows {
+	fromStation, ok := getStationByName[fromName]
+	if !ok {
 		log.Print("fromStation: no rows")
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
 	// To
-	err = dbx.Get(&toStation, query, toName)
-	if err == sql.ErrNoRows {
+	toStation, ok := getStationByName[toName]
+
+	if !ok {
 		log.Print("toStation: no rows")
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err != nil {
-		log.Print(err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
