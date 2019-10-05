@@ -265,7 +265,7 @@ func getUsableTrainClassList(fromStation Station, toStation Station) []string {
 	return ret
 }
 
-func (train Train) getAvailableSeats(fromStation Station, toStation Station, seatClass string, isSmokingSeat bool) ([]Seat, error) {
+func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station, seatClass string, isSmokingSeat bool) (int, error) {
 	// 指定種別の空き座席を返す
 
 	var err error
@@ -273,10 +273,10 @@ func (train Train) getAvailableSeats(fromStation Station, toStation Station, sea
 	// 全ての座席を取得する
 	// query := "SELECT * FROM seat_master WHERE train_class=? AND seat_class=? AND is_smoking_seat=?"
 	seatList := getSeatsWithIsSmoking(isSmokingSeat, seatClass, train.TrainClass)
-	availableSeatMap := map[string]Seat{}
+	availableSeatMap := map[int]Seat{}
 	// TODO: ここは先にキャッシュできる
 	for _, seat := range seatList {
-		availableSeatMap[fmt.Sprintf("%d_%d_%s", seat.CarNumber, seat.SeatRow, seat.SeatColumn)] = seat
+		availableSeatMap[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
 	}
 
 	// すでに取られている予約を取得する
@@ -303,17 +303,13 @@ func (train Train) getAvailableSeats(fromStation Station, toStation Station, sea
 	seatReservationList := []SeatReservation{}
 	err = dbx.Select(&seatReservationList, query, train.TrainName, train.TrainClass, fromStation.ID, fromStation.ID, toStation.ID, toStation.ID, fromStation.ID, toStation.ID)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	for _, seatReservation := range seatReservationList {
-		key := fmt.Sprintf("%d_%d_%s", seatReservation.CarNumber, seatReservation.SeatRow, seatReservation.SeatColumn)
+		key := seatReservation.CarNumber * 1000 + seatReservation.SeatRow * 10 + SeatClassNameToIndex(seatReservation.SeatColumn)
 		delete(availableSeatMap, key)
 	}
 
-	ret := []Seat{}
-	for _, seat := range availableSeatMap {
-		ret = append(ret, seat)
-	}
-	return ret, nil
+	return len(availableSeatMap), nil
 }
