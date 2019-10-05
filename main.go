@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 
@@ -44,6 +45,7 @@ func errorResponse(w http.ResponseWriter, errCode int, message string) {
 }
 
 func main() {
+	go func() { log.Println(http.ListenAndServe(":9876", nil)) }()
 	// MySQL関連のお膳立て
 	var err error
 
