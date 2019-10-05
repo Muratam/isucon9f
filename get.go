@@ -94,10 +94,10 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var inArgs []interface{}
 
 	if trainClass == "" {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=?"
+		query := "SELECT * FROM train_master use index () WHERE date=? AND train_class IN (?) AND is_nobori=?"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
+		query := "SELECT * FROM train_master use index () WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
@@ -379,12 +379,12 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 		s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
 
-		seatReservationList := []SeatReservation{}
+		reservationList := []Reservation{}
 
-		query := `SELECT s.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
+		query := `SELECT r.* FROM seat_reservations s, reservations r WHERE r.reservation_id=s.reservation_id AND r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
 
 		err = dbx.Select(
-			&seatReservationList, query,
+			&reservationList, query,
 			date.Format("2006/01/02"),
 			seat.TrainClass,
 			trainName,
@@ -397,28 +397,9 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Println(seatReservationList)
-
-		for _, seatReservation := range seatReservationList {
-			reservation := Reservation{}
-			query = "SELECT * FROM reservations WHERE reservation_id=?"
-			err = dbx.Get(&reservation, query, seatReservation.ReservationId)
-			if err != nil {
-				panic(err)
-			}
-
-			var departureStation, arrivalStation Station
-			query = "SELECT * FROM station_master WHERE name=?"
-
-			err = dbx.Get(&departureStation, query, reservation.Departure)
-			if err != nil {
-				panic(err)
-			}
-			err = dbx.Get(&arrivalStation, query, reservation.Arrival)
-			if err != nil {
-				panic(err)
-			}
-
+		for _, reservation := range reservationList {
+			departureStation, _ := getStationByName[reservation.Departure]
+			arrivalStation, _ := getStationByName[reservation.Arrival]
 			if train.IsNobori {
 				// 上り
 				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
