@@ -226,10 +226,10 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			var seatInformationList []SeatInformation
 			for _, seat := range seatList {
 				s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
-				seatReservationList := []SeatReservation{}
-				query = "SELECT s.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
+				reservationList := []Reservation{}
+				query = "SELECT r.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
 				err = dbx.Select(
-					&seatReservationList, query,
+					&reservationList, query,
 					date.Format("2006/01/02"),
 					seat.TrainClass,
 					req.TrainName,
@@ -242,13 +242,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				for _, seatReservation := range seatReservationList {
-					reservation := Reservation{}
-					query = "SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE"
-					err = dbx.Get(&reservation, query, seatReservation.ReservationId)
-					if err != nil {
-						panic(err)
-					}
+				for _, reservation := range reservationList {
 					departureStation, _ := getStationByName[reservation.Departure]
 					arrivalStation, _ := getStationByName[reservation.Arrival]
 					if train.IsNobori {
