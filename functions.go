@@ -98,11 +98,11 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	//
 	var err error
 	fromStation := getStationByID(depStation)
-	if depStation < 1 || depStation >= len(initialStationsByID) {
+	if depStation < 1 || depStation > len(initialStationsByID) {
 		return 0, sql.ErrNoRows
 	}
 	toStation := getStationByID(destStation)
-	if destStation < 1 || destStation >= len(initialStationsByID) {
+	if destStation < 1 || destStation > len(initialStationsByID) {
 		return 0, sql.ErrNoRows
 	}
 
