@@ -50,16 +50,9 @@ func getStationsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		列車検索
-			GET /train/search?use_at=<ISO8601形式の時刻> & from=東京 & to=大阪
-
-		return
-			料金
-			空席情報
-			発駅と着駅の到着時刻
-
-	*/
+	// 列車検索
+	// GET /train/search?use_at=<ISO8601形式の時刻> & from=東京 & to=大阪
+	// return 料金 空席情報 発駅と着駅の到着時刻
 
 	jst := time.FixedZone("JST", 9*60*60)
 	date, err := time.Parse(time.RFC3339, r.URL.Query().Get("use_at"))
@@ -82,44 +75,19 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	child, _ := strconv.Atoi(r.URL.Query().Get("child"))
 
 	var fromStation, toStation Station
-	query := "SELECT * FROM station_master WHERE name=?"
-
-	// From
-	err = dbx.Get(&fromStation, query, fromName)
-	if err == sql.ErrNoRows {
+	fromStation, ok := getStationByName[fromName]
+	if !ok {
 		log.Print("fromStation: no rows")
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// To
-	err = dbx.Get(&toStation, query, toName)
-	if err == sql.ErrNoRows {
+	toStation, ok = getStationByName[toName]
+	if !ok {
 		log.Print("toStation: no rows")
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		errorResponse(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	isNobori := false
-	if fromStation.Distance > toStation.Distance {
-		isNobori = true
-	}
-
-	query = "SELECT * FROM station_master ORDER BY distance"
-	if isNobori {
-		// 上りだったら駅リストを逆にする
-		query += " DESC"
-	}
-
+	isNobori := fromStation.Distance > toStation.Distance
 	usableTrainClassList := getUsableTrainClassList(fromStation, toStation)
 
 	var inQuery string
@@ -136,7 +104,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
 	trainList := []Train{}
 	err = dbx.Select(&trainList, inQuery, inArgs...)
 	if err != nil {
@@ -144,15 +111,15 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 上りだったら駅リストを逆にする
 	stations := []Station{}
-	err = dbx.Select(&stations, query)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
+	if isNobori {
+		stations = initialStationByIDDesc
+	} else {
+		stations = initialStationsByID
 	}
-
-	fmt.Println("From", fromStation)
-	fmt.Println("To", toStation)
+	// fmt.Println("From", fromStation)
+	// fmt.Println("To", toStation)
 
 	trainSearchResponseList := []TrainSearchResponse{}
 
@@ -164,18 +131,17 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 		for _, station := range stations {
 
+			// 駅リストを列車の発駅まで読み飛ばして頭出しをする
+			// 列車の発駅以前は止まらないので無視して良い
 			if !isSeekedToFirstStation {
-				// 駅リストを列車の発駅まで読み飛ばして頭出しをする
-				// 列車の発駅以前は止まらないので無視して良い
 				if station.Name == train.StartStation {
 					isSeekedToFirstStation = true
 				} else {
 					continue
 				}
 			}
-
+			// 発駅を経路中に持つ編成の場合フラグを立てる
 			if station.ID == fromStation.ID {
-				// 発駅を経路中に持つ編成の場合フラグを立てる
 				isContainsOriginStation = true
 			}
 			if station.ID == toStation.ID {

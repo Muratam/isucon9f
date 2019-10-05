@@ -1,6 +1,7 @@
 package main
 
-var initialStations = []Station{
+// ID は 1 少ないので注意
+var initialStationsByID = []Station{
 	Station{1, "東京", 0, true, true, true},
 	Station{2, "古岡", 12.745608, false, true, true},
 	Station{3, "絵寒町", 32.107649, false, false, true},
@@ -83,4 +84,22 @@ var initialStations = []Station{
 	Station{80, "条川", 990.339004, true, true, true},
 	Station{81, "菊岡", 1005.597665, false, true, true},
 	Station{82, "大阪", 1024.983484, true, true, true},
+}
+var initialStationByIDDesc = func() []Station {
+	result := make([]Station, len(initialStationsByID))
+	for i := 0; i < len(initialStationsByID); i++ {
+		result[i] = initialStationsByID[len(initialStationsByID)-i-1]
+	}
+	return result
+}()
+var getStationByName = func() map[string]Station {
+	result := map[string]Station{}
+	for _, station := range initialStationsByID {
+		result[station.Name] = station
+	}
+	return result
+}()
+
+func getStationByID(id int) Station {
+	return initialStationsByID[id-1]
 }
