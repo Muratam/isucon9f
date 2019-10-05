@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 
@@ -44,17 +45,20 @@ func errorResponse(w http.ResponseWriter, errCode int, message string) {
 }
 
 func main() {
+	go func() { log.Println(http.ListenAndServe(":9876", nil)) }()
 	// MySQL関連のお膳立て
 	var err error
 
-	host := os.Getenv("MYSQL_HOSTNAME")
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	port := os.Getenv("MYSQL_PORT")
-	if port == "" {
-		port = "3306"
-	}
+	// host := os.Getenv("MYSQL_HOSTNAME")
+	// if host == "" {
+	// 	host = "127.0.0.1"
+	// }
+	host := "192.168.35.24"
+	// port := os.Getenv("MYSQL_PORT")
+	// if port == "" {
+	// 	port = "3306"
+	// }
+	port := "13306"
 	_, err = strconv.Atoi(port)
 	if err != nil {
 		port = "3306"
