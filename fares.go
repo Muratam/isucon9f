@@ -2,7 +2,7 @@ package main
 
 import "time"
 
-func timeForinitialFares(s string) time.Time {
+func timeForinitialUsers(s string) time.Time {
 	result, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", s)
 	return result
 }

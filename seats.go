@@ -3944,3 +3944,86 @@ var initialSeats = []Seat{
 	Seat{"遅いやつ", 16, "D", 13, "reserved", false},
 	Seat{"遅いやつ", 16, "E", 13, "reserved", false},
 }
+
+// "SELECT * FROM seat_master WHERE train_class=? AND seat_class=? AND is_smoking_seat=?"
+// type Seat struct {
+// 	TrainClass    string `json:"train_class" db:"train_class"`
+// 	CarNumber     int    `json:"car_number" db:"car_number"`
+// 	SeatColumn    string `json:"seat_column" db:"seat_column"`
+// 	SeatRow       int    `json:"seat_row" db:"seat_row"`
+// 	SeatClass     string `json:"seat_class" db:"seat_class"`
+// 	IsSmokingSeat bool   `json:"is_smoking_seat" db:"is_smoking_seat"`
+// }
+
+// is_smoking_seat(bool) ->
+// bool:  IsSmokingSeat : 喫煙席
+// string : TrainClass : 最速 /  中間 / 遅いやつ
+// string : SeatClass : non-reserved / reserved / premium
+func trainClassNameToIndex(trainClass string) int {
+	if trainClass == "最速" {
+		return 0
+	}
+	if trainClass == "中間" {
+		return 1
+	}
+	return 2
+}
+func SeatClassNameToIndex(seatClass string) int {
+	if seatClass == "non-reserved" {
+		return 0
+	}
+	if seatClass == "reserved" {
+		return 1
+	}
+	return 2
+}
+
+var SmokingSeatClassTrainClassSeats = func() [][][]Seat {
+	result := make([][][]Seat, 3)
+	for i := 0; i < 3; i++ {
+		result[i] = make([][]Seat, 3)
+		for j := 0; j < 3; j++ {
+			result[i][j] = []Seat{}
+		}
+	}
+	for _, seat := range initialSeats {
+		if !seat.IsSmokingSeat {
+			continue
+		}
+		si := SeatClassNameToIndex(seat.SeatClass)
+		ti := trainClassNameToIndex(seat.TrainClass)
+		result[si][ti] = append(result[si][ti], seat)
+	}
+	return result
+}()
+var NonSmokingSeatClassTrainClassSeats = func() [][][]Seat {
+	result := make([][][]Seat, 3)
+	for i := 0; i < 3; i++ {
+		result[i] = make([][]Seat, 3)
+		for j := 0; j < 3; j++ {
+			result[i][j] = []Seat{}
+		}
+	}
+	for _, seat := range initialSeats {
+		if seat.IsSmokingSeat {
+			continue
+		}
+		si := SeatClassNameToIndex(seat.SeatClass)
+		ti := trainClassNameToIndex(seat.TrainClass)
+		result[si][ti] = append(result[si][ti], seat)
+	}
+	return result
+}()
+
+func getSeats(isSmoking bool, seatClass string, trainClass string) []Seat {
+	si := SeatClassNameToIndex(seatClass)
+	ti := trainClassNameToIndex(trainClass)
+	if isSmoking {
+		return SmokingSeatClassTrainClassSeats[si][ti]
+	} else {
+		return NonSmokingSeatClassTrainClassSeats[si][ti]
+	}
+}
+
+// SELECT * FROM seat_master
+// WHERE train_class=? AND seat_class=? AND is_smoking_seat=?

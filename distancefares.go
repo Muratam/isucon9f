@@ -1,16 +1,5 @@
 package main
 
-import "time"
-
-func timeForinitialUsers(s string) time.Time {
-	result, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", s)
-	return result
-}
-func timeForinitialUsersPtr(s string) *time.Time {
-	result, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", s)
-	return &result
-}
-
 var initialDistanceFares = []DistanceFare{
 	DistanceFare{0, 2500},
 	DistanceFare{50, 3000},
