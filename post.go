@@ -249,19 +249,8 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						panic(err)
 					}
-
-					var departureStation, arrivalStation Station
-					query = "SELECT * FROM station_master WHERE name=?"
-
-					err = dbx.Get(&departureStation, query, reservation.Departure)
-					if err != nil {
-						panic(err)
-					}
-					err = dbx.Get(&arrivalStation, query, reservation.Arrival)
-					if err != nil {
-						panic(err)
-					}
-
+					departureStation, _ := getStationByName[reservation.Departure]
+					arrivalStation, _ := getStationByName[reservation.Arrival]
 					if train.IsNobori {
 						// 上り
 						if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
@@ -416,35 +405,17 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 予約情報の乗車区間の駅IDを求める
-		var reservedfromStation, reservedtoStation Station
-		query = "SELECT * FROM station_master WHERE name=?"
-
-		// From
-		err = tx.Get(&reservedfromStation, query, reservation.Departure)
-		if err == sql.ErrNoRows {
+		reservedfromStation, ok := getStationByName[reservation.Departure]
+		if !ok {
 			tx.Rollback()
 			errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の乗車駅データがみつかりません")
 			log.Println(err.Error())
 			return
 		}
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "予約情報に記載された列車の乗車駅データの取得に失敗しました")
-			log.Println(err.Error())
-			return
-		}
-
-		// To
-		err = tx.Get(&reservedtoStation, query, reservation.Arrival)
-		if err == sql.ErrNoRows {
+		reservedtoStation, ok := getStationByName[reservation.Arrival]
+		if !ok {
 			tx.Rollback()
 			errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の降車駅データがみつかりません")
-			log.Println(err.Error())
-			return
-		}
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "予約情報に記載された列車の降車駅データの取得に失敗しました")
 			log.Println(err.Error())
 			return
 		}
