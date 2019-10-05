@@ -29,22 +29,7 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStationsHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		駅一覧
-			GET /api/stations
-
-		return []Station{}
-	*/
-
-	stations := []Station{}
-
-	query := "SELECT * FROM station_master ORDER BY id"
-	err := dbx.Select(&stations, query)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
+	stations := initialStationsByID
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(stations)
 }
