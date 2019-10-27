@@ -1,5 +1,10 @@
 package main
 
+// type DistanceFare struct {
+// 	Distance float64 `json:"distance" db:"distance"`
+// 	Fare     int     `json:"fare" db:"fare"`
+// }
+
 var initialDistanceFares = []DistanceFare{
 	DistanceFare{0, 2500},
 	DistanceFare{50, 3000},
