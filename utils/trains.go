@@ -29,7 +29,7 @@ var initialTrains = func()[]Train{
 		}
 		result[i] = Train{
 			now,
-			raw.DepartureAt,
+			raw.DepartureAt + ":00",
 			fromTrainClassI[raw.TrainClassI],
 			strconv.Itoa((i%192)+1),
 			startStationFromStationsI[raw.StationsI],
