@@ -55,7 +55,8 @@ Search
 Handler"];
 a3[label="get
 Available
-Seats"];
+Seats
+Count"];
 a14 -> a6; 
 a14[label="user
 Reservation
@@ -107,15 +108,13 @@ fare_master[label="fare
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 a2[label="fare
 Calc"];
-seat_master -> a3[style="bold"][dir="none"];
-seat_master[label="seat
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 seat_reservations -> a3[style="bold"][dir="none"];
 seat_reservations[label="seat
 _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 a3[label="get
 Available
-Seats"];
+Seats
+Count"];
 distance_fare_master -> a4[style="bold"][dir="none"];
 distance_fare_master[label="distance
 _fare
@@ -165,9 +164,6 @@ Handler"];
 train_master -> a11[style="bold"][dir="none"];
 train_master[label="train
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-station_master -> a11[style="bold"][dir="none"];
-station_master[label="station
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 seat_master -> a11[style="bold"][dir="none"];
 seat_master[label="seat
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
@@ -184,9 +180,6 @@ _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 a11[label="train
 Reservation
 Handler"];
-station_master -> a12[style="bold"][dir="none"];
-station_master[label="station
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 train_master -> a12[style="bold"][dir="none"];
 train_master[label="train
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
@@ -200,17 +193,12 @@ Handler"];
 train_master -> a13[style="bold"][dir="none"];
 train_master[label="train
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-station_master -> a13[style="bold"][dir="none"];
-station_master[label="station
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 seat_master -> a13[style="bold"][dir="none"];
 seat_master[label="seat
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 seat_reservations -> a13[style="bold"][dir="none"];
 seat_reservations[label="seat
 _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-reservations -> a13[style="bold"][dir="none"];
-reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 a13[label="train
 Seats
 Handler"];
