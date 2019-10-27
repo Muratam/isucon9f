@@ -323,6 +323,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 対象列車の取得
 	train, err := getTrainWithClass(date, trainName, trainClass)
+	fmt.Println(train, err)
 	if err != nil {
 		errorResponse(w, http.StatusNotFound, "列車が存在しません")
 	}
