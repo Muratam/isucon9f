@@ -326,6 +326,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(train, err)
 	if err != nil {
 		errorResponse(w, http.StatusNotFound, "列車が存在しません")
+		return
 	}
 	// From
 	fromStation, ok := getStationByName[fromName]
