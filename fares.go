@@ -90,3 +90,23 @@ var initialFares = []Fare{
 	Fare{"遅いやつ", "reserved", timeForinitialUsers("2020-12-25 00:00:00 +0800 CST"), 5},
 	Fare{"遅いやつ", "non-reserved", timeForinitialUsers("2020-12-25 00:00:00 +0800 CST"), 4},
 }
+
+// type Fare struct {
+// 	TrainClass     string    `json:"train_class" db:"train_class"`
+// 	SeatClass      string    `json:"seat_class" db:"seat_class"`
+// 	StartDate      time.Time `json:"start_date" db:"start_date"`
+// 	FareMultiplier float64   `json:"fare_multiplier" db:"fare_multiplier"`
+// }
+var FaresfromtrainClassSeatClass = func() map[string][]Fare {
+	result := map[string][]Fare{}
+	for _, fare := range initialFares {
+		key := fare.TrainClass + fare.SeatClass
+		val, ok := result[key]
+		if !ok {
+			val = []Fare{}
+		}
+		val = append(val, fare)
+		result[key] = val
+	}
+	return result
+}()

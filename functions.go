@@ -97,49 +97,26 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	// 料金計算メモ
 	// 距離運賃(円) * 期間倍率(繁忙期なら2倍等) * 車両クラス倍率(急行・各停等) * 座席クラス倍率(プレミアム・指定席・自由席)
 	//
-	var err error
-	var fromStation, toStation Station
-
-	query := "SELECT * FROM station_master WHERE id=?"
-
-	// From
-	err = dbx.Get(&fromStation, query, depStation)
-	if err == sql.ErrNoRows {
-		return 0, err
+	if depStation < 1 || depStation > len(initialStationsByID) {
+		return 0, sql.ErrNoRows
 	}
-	if err != nil {
-		return 0, err
+	if destStation < 1 || destStation > len(initialStationsByID) {
+		return 0, sql.ErrNoRows
 	}
-
-	// To
-	err = dbx.Get(&toStation, query, destStation)
-	if err == sql.ErrNoRows {
-		return 0, err
-	}
-	if err != nil {
-		log.Print(err)
-		return 0, err
-	}
-
-	fmt.Println("distance", math.Abs(toStation.Distance-fromStation.Distance))
+	fromStation := getStationByID(depStation)
+	toStation := getStationByID(destStation)
+	// fmt.Println("distance", math.Abs(toStation.Distance-fromStation.Distance))
 	distFare, err := getDistanceFare(math.Abs(toStation.Distance - fromStation.Distance))
 	if err != nil {
 		return 0, err
 	}
-	fmt.Println("distFare", distFare)
+	// fmt.Println("distFare", distFare)
 
 	// 期間・車両・座席クラス倍率
-	fareList := []Fare{}
-	query = "SELECT * FROM fare_master WHERE train_class=? AND seat_class=? ORDER BY start_date"
-	err = dbx.Select(&fareList, query, trainClass, seatClass)
-	if err != nil {
+	fareList, ok := FaresfromtrainClassSeatClass[trainClass+seatClass]
+	if !ok {
 		return 0, err
 	}
-
-	if len(fareList) == 0 {
-		return 0, fmt.Errorf("fare_master does not exists")
-	}
-
 	selectedFare := fareList[0]
 	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
 	for _, fare := range fareList {
@@ -148,9 +125,6 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 			selectedFare = fare
 		}
 	}
-
-	fmt.Println("%%%%%%%%%%%%%%%%%%%")
-
 	return int(float64(distFare) * selectedFare.FareMultiplier), nil
 }
 
@@ -283,16 +257,16 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	availableSeatMap4 := map[int]Seat{}
 	// TODO: ここは先にキャッシュできる
 	for _, seat := range premium_avail_seats {
-		availableSeatMap1[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+		availableSeatMap1[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
 	}
 	for _, seat := range premium_smoke_avail_seats {
-		availableSeatMap2[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+		availableSeatMap2[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
 	}
 	for _, seat := range reserved_avail_seats {
-		availableSeatMap3[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+		availableSeatMap3[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
 	}
 	for _, seat := range reserved_smoke_avail_seats {
-		availableSeatMap4[seat.CarNumber * 1000 + seat.SeatRow * 10 + SeatClassNameToIndex(seat.SeatColumn)] = seat
+		availableSeatMap4[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
 	}
 
 	// すでに取られている予約を取得する
@@ -323,7 +297,7 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	}
 
 	for _, seatReservation := range seatReservationList {
-		key := seatReservation.CarNumber * 1000 + seatReservation.SeatRow * 10 + SeatClassNameToIndex(seatReservation.SeatColumn)
+		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
 		delete(availableSeatMap1, key)
 		delete(availableSeatMap2, key)
 		delete(availableSeatMap3, key)
