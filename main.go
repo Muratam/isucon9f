@@ -49,11 +49,10 @@ func main() {
 	// MySQL関連のお膳立て
 	var err error
 
-	// host := os.Getenv("MYSQL_HOSTNAME")
-	// if host == "" {
-	// 	host = "127.0.0.1"
-	// }
-	host := "127.0.0.1"
+	host := os.Getenv("MYSQL_HOSTNAME")
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	// port := os.Getenv("MYSQL_PORT")
 	// if port == "" {
 	// 	port = "3306"
