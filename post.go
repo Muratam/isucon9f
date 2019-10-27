@@ -13,17 +13,19 @@ import (
 	"os"
 	"strconv"
 	"time"
-
+	"crypto/tls"
 	"goji.io/pat"
 	"golang.org/x/crypto/pbkdf2"
 )
-
 func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	/*
 		initialize
 	*/
 
-	dbx.Exec("TRUNCATE seat_reservations")
+	_, err := dbx.Exec("TRUNCATE seat_reservations")
+	if err != nil {
+		panic(err)
+	}
 	dbx.Exec("TRUNCATE reservations")
 	dbx.Exec("TRUNCATE users")
 
@@ -675,12 +677,19 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	if payment_api == "" {
 		payment_api = "http://payment:5000"
 	}
-
-	resp, err := http.Post(payment_api+"/payment", "application/json", bytes.NewBuffer(j))
+	fmt.Println(payment_api)
+	tr := &http.Transport{
+    TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+  }
+  client := &http.Client{
+    Transport: tr,
+  }
+  // http.Post
+	resp, err := client.Post(payment_api+"/payment", "application/json", bytes.NewBuffer(j))
 	if err != nil {
 		tx.Rollback()
-		errorResponse(w, resp.StatusCode, "HTTP POSTに失敗しました")
 		log.Println(err.Error())
+		errorResponse(w, resp.StatusCode, "HTTP POSTに失敗しました")
 		return
 	}
 
@@ -887,8 +896,13 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		if payment_api == "" {
 			payment_api = "http://payment:5000"
 		}
-
-		client := &http.Client{Timeout: time.Duration(10) * time.Second}
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{
+			Timeout: time.Duration(10) * time.Second,
+			Transport: tr,
+		}
 		req, err := http.NewRequest("DELETE", payment_api+"/payment/"+reservation.PaymentId, bytes.NewBuffer(j))
 		if err != nil {
 			tx.Rollback()
