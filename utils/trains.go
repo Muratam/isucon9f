@@ -13,20 +13,27 @@ type Train struct {
 	LastStation  string    `json:"last_station" db:"last_station"`
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
 }
+
+// 0: "東京->大阪", 1: "東京->京都", 2:"東京->名古屋" (start->last)
+// +3 すると逆
+
 var initialTrains = func()[]Train{
-	result := make([]Train,len(rawTrainData))
+	result := make([]Train,len(RTNData))
 	now, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", "2020-01-01 00:00:00 +0800 CST")
-	for i,raw := range rawTrainData{
+	fromTrainClassI := []string{"最速","中間","遅いやつ"}
+	startStationFromStationsI := []string{"東京","東京","東京","大阪","京都","名古屋"}
+	lastStationFromStationsI := []string{"大阪","京都","名古屋","東京","東京","東京"}
+	for i,raw := range RTNData{
 		if i % 192 == 191{
 			now = now.AddDate(0,0,1)
 		}
 		result[i] = Train{
 			now,
 			raw.DepartureAt,
-			raw.TrainClass,
+			fromTrainClassI[raw.TrainClassI],
 			strconv.Itoa((i%192)+1),
-			raw.StartStation,
-			raw.LastStation,
+			startStationFromStationsI[raw.StationsI],
+			lastStationFromStationsI[raw.StationsI],
 			i % 2 == 1,
 		}
 	}
