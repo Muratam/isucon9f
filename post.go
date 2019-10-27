@@ -4,6 +4,7 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,10 +14,11 @@ import (
 	"os"
 	"strconv"
 	"time"
-	"crypto/tls"
+
 	"goji.io/pat"
 	"golang.org/x/crypto/pbkdf2"
 )
+
 func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	/*
 		initialize
@@ -38,37 +40,6 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		列車の席予約API　支払いはまだ
-		POST /api/train/reserve
-			{
-				"date": "2020-12-31T07:57:00+09:00",
-				"train_name": "183",
-				"train_class": "中間",
-				"car_number": 7,
-				"is_smoking_seat": false,
-				"seat_class": "reserved",
-				"departure": "東京",
-				"arrival": "名古屋",
-				"child": 2,
-				"adult": 1,
-				"column": "A",
-				"seats": [
-					{
-					"row": 3,
-					"column": "B"
-					},
-						{
-					"row": 4,
-					"column": "C"
-					}
-				]
-		}
-		レスポンスで予約IDを返す
-		reservationResponse(w http.ResponseWriter, errCode int, id int, ok bool, message string)
-	*/
-
-	// json parse
 	req := new(TrainReservationRequest)
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -77,7 +48,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err.Error())
 		return
 	}
-
 	// 乗車日の日付表記統一
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	date, err := time.Parse(time.RFC3339, req.Date)
@@ -86,7 +56,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err.Error())
 	}
 	date = date.In(jst)
-
 	if !checkAvailableDate(date) {
 		errorResponse(w, http.StatusNotFound, "予約可能期間外です")
 		return
@@ -106,21 +75,9 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 列車データを取得
-	tmas := Train{}
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-	err = dbx.Get(
-		&tmas, query,
-		date.Format("2006/01/02"),
-		req.TrainClass,
-		req.TrainName,
-	)
-	if err == sql.ErrNoRows {
-		errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
-		log.Println(err.Error())
-		return
-	}
+	tmas, err := getTrainWithClass(date, req.TrainName, req.TrainClass)
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, "列車データの取得に失敗しました")
+		errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
 		log.Println(err.Error())
 		return
 	}
@@ -182,6 +139,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	query := ""
 
 	//	あいまい座席検索
 	//	seatsが空白の時に発動する
@@ -191,18 +149,10 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			break // non-reservedはそもそもあいまい検索もせずダミーのRow/Columnで予約を確定させる。
 		}
 		//当該列車・号車中の空き座席検索
-		var train Train
-		query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-		err = dbx.Get(&train, query, date.Format("2006/01/02"), req.TrainClass, req.TrainName)
-		if err == sql.ErrNoRows {
+		train, err := getTrainWithClass(date, req.TrainName, req.TrainClass)
+		if err != nil {
 			panic(err)
 		}
-		if err != nil {
-			log.Print("failed to trainReservation: failed to get train:", err)
-			errorResponse(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
 		usableTrainClassList := getUsableTrainClassList(fromStation, toStation)
 		usable := false
 		for _, v := range usableTrainClassList {
@@ -271,7 +221,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
-
 				seatInformationList = append(seatInformationList, s)
 			}
 
@@ -443,7 +392,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if secdup {
-
 			// 区間重複の場合は更に座席の重複をチェックする
 			SeatReservations := []SeatReservation{}
 			query := "SELECT * FROM seat_reservations WHERE reservation_id=? FOR UPDATE"
@@ -679,12 +627,12 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println(payment_api)
 	tr := &http.Transport{
-    TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-  }
-  client := &http.Client{
-    Transport: tr,
-  }
-  // http.Post
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+	// http.Post
 	resp, err := client.Post(payment_api+"/payment", "application/json", bytes.NewBuffer(j))
 	if err != nil {
 		tx.Rollback()
@@ -854,13 +802,13 @@ var cancelCh = func() chan string {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 		client := &http.Client{
-			Timeout: time.Duration(10) * time.Second,
+			Timeout:   time.Duration(10) * time.Second,
 			Transport: tr,
 		}
 
 		for {
 			select {
-			case <- ticker:
+			case <-ticker:
 				if len(ids) == 0 {
 					continue
 				}
@@ -893,14 +841,14 @@ var cancelCh = func() chan string {
 				}
 
 				// if output.Deleted != len(ids) {
-					log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
+				log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
 				// }
 
 				ids = ids[:0]
 
 				resp.Body.Close()
 				log.Println("cancel: finish cancel")
-			case id := <- ch:
+			case id := <-ch:
 				ids = append(ids, id)
 				log.Println("cancel: id", id, "added")
 			}

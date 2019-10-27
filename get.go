@@ -322,16 +322,9 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	toName := r.URL.Query().Get("to")
 
 	// 対象列車の取得
-	var train Train
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-	err = dbx.Get(&train, query, date.Format("2006/01/02"), trainClass, trainName)
-	if err == sql.ErrNoRows {
-		errorResponse(w, http.StatusNotFound, "列車が存在しません")
-	}
+	train, err := getTrainWithClass(date, trainName, trainClass)
 	if err != nil {
-		log.Print("failed to get seats: failed to get train:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
+		errorResponse(w, http.StatusNotFound, "列車が存在しません")
 	}
 	// From
 	fromStation, ok := getStationByName[fromName]
@@ -365,7 +358,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	seatList := []Seat{}
 
-	query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
+	query := "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
 	err = dbx.Select(&seatList, query, trainClass, carNumber)
 	if err != nil {
 		log.Print("failed to get seats: failed to get seat list:", err)
