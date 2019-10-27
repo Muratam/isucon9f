@@ -37,7 +37,7 @@ func getTrainRaw(dayI int, name int) Train {
 //
 func getTrain(date time.Time, trainnameStr string) (Train, error) {
 	if date.Year() != 2020 || date.Second() != 0 || date.Minute() != 0 {
-		return Train{}, errors.New("invalid date")
+		return Train{}, errors.New("invalid date:" + date.String() + trainnameStr)
 	}
 	trainname, err := strconv.Atoi(trainnameStr)
 	if err != nil {
