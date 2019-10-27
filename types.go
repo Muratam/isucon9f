@@ -195,6 +195,14 @@ type CancelPaymentInformationResponse struct {
 	IsOk bool `json:"is_ok"`
 }
 
+type BulkCancelPaymentInformationRequest struct {
+	PaymentId []string `json:"payment_id"`
+}
+
+type BulkCancelPaymentInformationResponse struct {
+	Deleted int `json:"deleted"`
+}
+
 type Settings struct {
 	PaymentAPI string `json:"payment_api"`
 }
