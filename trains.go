@@ -57,7 +57,7 @@ func getTrainWithClass(date time.Time, trainnameStr string, trainclassStr string
 		return train, err
 	}
 	if train.TrainClass != trainclassStr {
-		return train, errors.New("invalid train class")
+		return train, errors.New("invalid train class:" + train.TrainClass + " is not " + trainclassStr)
 	}
 	return train, nil
 }
