@@ -861,6 +861,10 @@ var cancelCh = func() chan string {
 		for {
 			select {
 			case <- ticker:
+				if len(ids) == 0 {
+					continue
+				}
+				log.Println("cancel: tick")
 				cancelInfo := BulkCancelPaymentInformationRequest{PaymentId: ids}
 				j, err := json.Marshal(cancelInfo)
 				if err != nil {
@@ -874,29 +878,31 @@ var cancelCh = func() chan string {
 
 				resp, err := client.Post(payment_api+"/payment/_bulk", "application/json", bytes.NewBuffer(j))
 				if err != nil {
-					log.Println(err.Error())
+					log.Println("cancel: ", err.Error())
 				}
 
 				body, err := ioutil.ReadAll(resp.Body)
 				if err != nil {
-					log.Println(err.Error())
+					log.Println("cancel: ", err.Error())
 				}
 
 				output := BulkCancelPaymentInformationResponse{}
 				err = json.Unmarshal(body, &output)
 				if err != nil {
-					log.Println(err.Error())
+					log.Println("cancel: ", err.Error())
 				}
 
-				if output.Deleted != len(ids) {
-					log.Println("requested number of ids(", len(ids), ") != deleted(", output.Deleted, ")")
-				}
+				// if output.Deleted != len(ids) {
+					log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
+				// }
 
 				ids = ids[:0]
 
 				resp.Body.Close()
+				log.Println("cancel: finish cancel")
 			case id := <- ch:
 				ids = append(ids, id)
+				log.Println("cancel: id", id, "added")
 			}
 		}
 	}()
