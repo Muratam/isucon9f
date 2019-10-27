@@ -41,6 +41,7 @@ func getStationsHandler(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT * FROM station_master ORDER BY id"
 	err := dbx.Select(&stations, query)
 	if err != nil {
+		log.Print("failed to get stations:", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -57,6 +58,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	jst := time.FixedZone("JST", 9*60*60)
 	date, err := time.Parse(time.RFC3339, r.URL.Query().Get("use_at"))
 	if err != nil {
+		log.Print("failed to search train: failed to time.Parse:", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -101,12 +103,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
+		log.Print("failed to search train: failed to sqlx.In:", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	trainList := []Train{}
 	err = dbx.Select(&trainList, inQuery, inArgs...)
 	if err != nil {
+		log.Print("failed to search train: failed to select trainList:", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -170,12 +174,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, fromStation.Name)
 			if err != nil {
+				log.Print("failed to search train: failed to get departure time:", err)
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 
 			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
 			if err != nil {
+				log.Print("failed to search train: failed to get departureDate:", err)
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -187,12 +193,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, toStation.Name)
 			if err != nil {
+				log.Print("failed to search train: failed to get arrival time:", err)
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 
 			premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats, err := train.getAvailableSeatsCount(fromStation, toStation)
 			if err != nil {
+				log.Print("failed to search train: failed to get available seats count", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -237,6 +245,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			// 料金計算
 			premiumFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "premium")
 			if err != nil {
+				log.Print("failed to search train: failed to calc premium fare", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -244,6 +253,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 			reservedFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "reserved")
 			if err != nil {
+				log.Print("failed to search train: failed to calc reserved fare", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -251,6 +261,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 			nonReservedFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "non-reserved")
 			if err != nil {
+				log.Print("failed to search train: failed to calc non reserved fare", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -276,6 +287,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := json.Marshal(trainSearchResponseList)
 	if err != nil {
+		log.Print("failed to search train: failed to json.Marshal", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -291,12 +303,14 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	date, err := time.Parse(time.RFC3339, r.URL.Query().Get("date"))
 	if err != nil {
+		log.Print("failed to get seats: failed to parse time", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	date = date.In(jst)
 
 	if !checkAvailableDate(date) {
+		log.Print("failed to get seats: invalid date", err)
 		errorResponse(w, http.StatusNotFound, "予約可能期間外です")
 		return
 	}
@@ -315,6 +329,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusNotFound, "列車が存在しません")
 	}
 	if err != nil {
+		log.Print("failed to get seats: failed to get train:", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -353,6 +368,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
 	err = dbx.Select(&seatList, query, trainClass, carNumber)
 	if err != nil {
+		log.Print("failed to get seats: failed to get seat list:", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -377,6 +393,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 			seat.SeatColumn,
 		)
 		if err != nil {
+			log.Print("failed to get seats: failed to get reservation list:", err)
 			errorResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -430,6 +447,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	c := CarInformation{date.Format("2006/01/02"), trainClass, trainName, carNumber, seatInformationList, simpleCarInformationList}
 	resp, err := json.Marshal(c)
 	if err != nil {
+		log.Print("failed to get seats: failed to json.Marshal", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -466,6 +484,7 @@ func userReservationsHandler(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT * FROM reservations WHERE user_id=?"
 	err := dbx.Select(&reservationList, query, user.ID)
 	if err != nil {
+		log.Print("failed to get user reservation: failed to get reservation list", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -498,6 +517,7 @@ func userReservationResponseHandler(w http.ResponseWriter, r *http.Request) {
 	itemIDStr := pat.Param(r, "item_id")
 	itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
 	if err != nil || itemID <= 0 {
+		log.Print("failed to get user reservation response: failed to strconv.ParseInt", err)
 		errorResponse(w, http.StatusBadRequest, "incorrect item id")
 		return
 	}
@@ -517,6 +537,7 @@ func userReservationResponseHandler(w http.ResponseWriter, r *http.Request) {
 	reservationResponse, err := makeReservationResponse(reservation)
 
 	if err != nil {
+		log.Print("failed to get user reservation response: failed to make reservation response", err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		log.Println("makeReservationResponse() ", err)
 		return

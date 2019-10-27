@@ -70,6 +70,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	req := new(TrainReservationRequest)
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
+		log.Print("failed to trainReservation: failed to decode request json:", err)
 		errorResponse(w, http.StatusInternalServerError, "JSON parseに失敗しました")
 		log.Println(err.Error())
 		return
@@ -96,7 +97,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	toStation, ok := getStationByName[req.Arrival]
-	if err != nil {
+	if !ok {
 		errorResponse(w, http.StatusInternalServerError, "乗車駅データの取得に失敗しました")
 		log.Println(err.Error())
 		return
@@ -195,6 +196,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		if err != nil {
+			log.Print("failed to trainReservation: failed to get train:", err)
 			errorResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -219,6 +221,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? AND seat_class=? AND is_smoking_seat=? ORDER BY seat_row, seat_column"
 			err = dbx.Select(&seatList, query, req.TrainClass, carnum, req.SeatClass, req.IsSmokingSeat)
 			if err != nil {
+				log.Print("failed to trainReservation: failed t get seat list:", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -238,6 +241,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 					seat.SeatColumn,
 				)
 				if err != nil {
+					log.Print("failed to trainReservation: failed to get reservation list:", err)
 					errorResponse(w, http.StatusBadRequest, err.Error())
 					return
 				}
@@ -751,6 +755,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 	salt := make([]byte, 1024)
 	_, err := crand.Read(salt)
 	if err != nil {
+		log.Print("failed to sign up: failed to read salt:", err)
 		errorResponse(w, http.StatusInternalServerError, "salt generator error")
 		return
 	}
@@ -763,6 +768,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 		superSecurePassword,
 	)
 	if err != nil {
+		log.Print("failed to sign up: failed to exec insert:", err)
 		errorResponse(w, http.StatusBadRequest, "user registration failed")
 		return
 	}
@@ -790,6 +796,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Print("failed to log in: failed to get user:", err)
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -838,6 +845,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	itemIDStr := pat.Param(r, "item_id")
 	itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
 	if err != nil || itemID <= 0 {
+		log.Print("failed to userReservationCancel: failed to strconv.ParseInt:", err)
 		errorResponse(w, http.StatusBadRequest, "incorrect item id")
 		return
 	}
@@ -854,6 +862,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Print("failed to userReservationCancel: failed to get reservation:", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "予約情報の検索に失敗しました")
 	}
@@ -928,6 +937,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	query = "DELETE FROM reservations WHERE reservation_id=? AND user_id=?"
 	_, err = tx.Exec(query, itemID, user.ID)
 	if err != nil {
+		log.Print("failed to userReservationCancel: failed to delete reservation:", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
@@ -942,6 +952,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Print("failed to userReservationCancel: failed to delete seat_reservations", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return

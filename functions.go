@@ -54,6 +54,7 @@ func distanceFareHandler(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT * FROM distance_fare_master"
 	err := dbx.Select(&distanceFareList, query)
 	if err != nil {
+		log.Print(err)
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
