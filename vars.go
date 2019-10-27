@@ -3,11 +3,13 @@ package main
 import (
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
+	"time"
 )
 
 const (
 	sessionName   = "session_isutrain"
 	availableDays = 100
+	cancelInterval = 2000 * time.Millisecond
 )
 
 var (

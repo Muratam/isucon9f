@@ -13,17 +13,19 @@ import (
 	"os"
 	"strconv"
 	"time"
-
+	"crypto/tls"
 	"goji.io/pat"
 	"golang.org/x/crypto/pbkdf2"
 )
-
 func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	/*
 		initialize
 	*/
 
-	dbx.Exec("TRUNCATE seat_reservations")
+	_, err := dbx.Exec("TRUNCATE seat_reservations")
+	if err != nil {
+		panic(err)
+	}
 	dbx.Exec("TRUNCATE reservations")
 	dbx.Exec("TRUNCATE users")
 
@@ -70,6 +72,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	req := new(TrainReservationRequest)
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
+		log.Print("failed to trainReservation: failed to decode request json:", err)
 		errorResponse(w, http.StatusInternalServerError, "JSON parseに失敗しました")
 		log.Println(err.Error())
 		return
@@ -96,7 +99,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	toStation, ok := getStationByName[req.Arrival]
-	if err != nil {
+	if !ok {
 		errorResponse(w, http.StatusInternalServerError, "乗車駅データの取得に失敗しました")
 		log.Println(err.Error())
 		return
@@ -195,6 +198,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		if err != nil {
+			log.Print("failed to trainReservation: failed to get train:", err)
 			errorResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -219,6 +223,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? AND seat_class=? AND is_smoking_seat=? ORDER BY seat_row, seat_column"
 			err = dbx.Select(&seatList, query, req.TrainClass, carnum, req.SeatClass, req.IsSmokingSeat)
 			if err != nil {
+				log.Print("failed to trainReservation: failed t get seat list:", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -238,6 +243,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 					seat.SeatColumn,
 				)
 				if err != nil {
+					log.Print("failed to trainReservation: failed to get reservation list:", err)
 					errorResponse(w, http.StatusBadRequest, err.Error())
 					return
 				}
@@ -671,12 +677,19 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	if payment_api == "" {
 		payment_api = "http://payment:5000"
 	}
-
-	resp, err := http.Post(payment_api+"/payment", "application/json", bytes.NewBuffer(j))
+	fmt.Println(payment_api)
+	tr := &http.Transport{
+    TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+  }
+  client := &http.Client{
+    Transport: tr,
+  }
+  // http.Post
+	resp, err := client.Post(payment_api+"/payment", "application/json", bytes.NewBuffer(j))
 	if err != nil {
 		tx.Rollback()
-		errorResponse(w, resp.StatusCode, "HTTP POSTに失敗しました")
 		log.Println(err.Error())
+		errorResponse(w, resp.StatusCode, "HTTP POSTに失敗しました")
 		return
 	}
 
@@ -751,6 +764,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 	salt := make([]byte, 1024)
 	_, err := crand.Read(salt)
 	if err != nil {
+		log.Print("failed to sign up: failed to read salt:", err)
 		errorResponse(w, http.StatusInternalServerError, "salt generator error")
 		return
 	}
@@ -763,6 +777,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 		superSecurePassword,
 	)
 	if err != nil {
+		log.Print("failed to sign up: failed to exec insert:", err)
 		errorResponse(w, http.StatusBadRequest, "user registration failed")
 		return
 	}
@@ -790,6 +805,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Print("failed to log in: failed to get user:", err)
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -829,6 +845,70 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	messageResponse(w, "logged out")
 }
 
+var cancelCh = func() chan string {
+	ch := make(chan string, 10000)
+	ticker := time.Tick(cancelInterval)
+	ids := make([]string, 0, 10000)
+	go func() {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{
+			Timeout: time.Duration(10) * time.Second,
+			Transport: tr,
+		}
+
+		for {
+			select {
+			case <- ticker:
+				if len(ids) == 0 {
+					continue
+				}
+				log.Println("cancel: tick")
+				cancelInfo := BulkCancelPaymentInformationRequest{PaymentId: ids}
+				j, err := json.Marshal(cancelInfo)
+				if err != nil {
+					log.Fatalln(err.Error())
+				}
+
+				payment_api := os.Getenv("PAYMENT_API")
+				if payment_api == "" {
+					payment_api = "http://payment:5000"
+				}
+
+				resp, err := client.Post(payment_api+"/payment/_bulk", "application/json", bytes.NewBuffer(j))
+				if err != nil {
+					log.Println("cancel: ", err.Error())
+				}
+
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					log.Println("cancel: ", err.Error())
+				}
+
+				output := BulkCancelPaymentInformationResponse{}
+				err = json.Unmarshal(body, &output)
+				if err != nil {
+					log.Println("cancel: ", err.Error())
+				}
+
+				// if output.Deleted != len(ids) {
+					log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
+				// }
+
+				ids = ids[:0]
+
+				resp.Body.Close()
+				log.Println("cancel: finish cancel")
+			case id := <- ch:
+				ids = append(ids, id)
+				log.Println("cancel: id", id, "added")
+			}
+		}
+	}()
+	return ch
+}()
+
 func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	user, errCode, errMsg := getUser(r)
 	if errCode != http.StatusOK {
@@ -838,6 +918,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	itemIDStr := pat.Param(r, "item_id")
 	itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
 	if err != nil || itemID <= 0 {
+		log.Print("failed to userReservationCancel: failed to strconv.ParseInt:", err)
 		errorResponse(w, http.StatusBadRequest, "incorrect item id")
 		return
 	}
@@ -854,6 +935,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Print("failed to userReservationCancel: failed to get reservation:", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "予約情報の検索に失敗しました")
 	}
@@ -865,62 +947,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "done":
 		// 支払いをキャンセルする
-		payInfo := CancelPaymentInformationRequest{reservation.PaymentId}
-		j, err := json.Marshal(payInfo)
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "JSON Marshalに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-
-		payment_api := os.Getenv("PAYMENT_API")
-		if payment_api == "" {
-			payment_api = "http://payment:5000"
-		}
-
-		client := &http.Client{Timeout: time.Duration(10) * time.Second}
-		req, err := http.NewRequest("DELETE", payment_api+"/payment/"+reservation.PaymentId, bytes.NewBuffer(j))
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "HTTPリクエストの作成に失敗しました")
-			log.Println(err.Error())
-			return
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, resp.StatusCode, "HTTP DELETEに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-		defer resp.Body.Close()
-
-		// リクエスト失敗
-		if resp.StatusCode != http.StatusOK {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "決済のキャンセルに失敗しました")
-			log.Println(resp.StatusCode)
-			return
-		}
-
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "レスポンスの読み込みに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-
-		// リクエスト取り出し
-		output := CancelPaymentInformationResponse{}
-		err = json.Unmarshal(body, &output)
-		if err != nil {
-			errorResponse(w, http.StatusInternalServerError, "JSON parseに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-		fmt.Println(output)
+		cancelCh <- reservation.PaymentId
 	default:
 		// pass(requesting状態のものはpayment_id無いので叩かない)
 	}
@@ -928,6 +955,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	query = "DELETE FROM reservations WHERE reservation_id=? AND user_id=?"
 	_, err = tx.Exec(query, itemID, user.ID)
 	if err != nil {
+		log.Print("failed to userReservationCancel: failed to delete reservation:", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
@@ -942,6 +970,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Print("failed to userReservationCancel: failed to delete seat_reservations", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return

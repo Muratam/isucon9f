@@ -1,3 +1,3 @@
 isutrain: $(wildcard *.go)
 	go build -o $@
-	sudo systemctl restart isutrain-raw
+	sudo systemctl restart isutrain-go

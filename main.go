@@ -7,7 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"strconv"
+	//"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -49,20 +49,16 @@ func main() {
 	// MySQL関連のお膳立て
 	var err error
 
-	// host := os.Getenv("MYSQL_HOSTNAME")
-	// if host == "" {
-	// 	host = "127.0.0.1"
-	// }
-	host := "192.168.35.24"
-	// port := os.Getenv("MYSQL_PORT")
-	// if port == "" {
-	// 	port = "3306"
-	// }
-	port := "13306"
-	_, err = strconv.Atoi(port)
-	if err != nil {
-		port = "3306"
+	host := os.Getenv("MYSQL_HOSTNAME")
+	if host == "" {
+		host = "127.0.0.1"
 	}
+	fmt.Println("HOST:" + host)
+	port := os.Getenv("MYSQL_PORT")
+	if port == "" {
+	 	port = "3306"
+	}
+	fmt.Println("PORT:"+port)
 	user := os.Getenv("MYSQL_USER")
 	if user == "" {
 		user = "isutrain"
