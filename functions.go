@@ -68,27 +68,17 @@ func distanceFareHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getDistanceFare(origToDestDistance float64) (int, error) {
-
-	distanceFareList := []DistanceFare{}
-
-	query := "SELECT distance,fare FROM distance_fare_master ORDER BY distance"
-	err := dbx.Select(&distanceFareList, query)
-	if err != nil {
-		return 0, err
-	}
-
 	lastDistance := 0.0
 	lastFare := 0
-	for _, distanceFare := range distanceFareList {
 
-		fmt.Println(origToDestDistance, distanceFare.Distance, distanceFare.Fare)
+	for _, distanceFare := range initialDistanceFares {
+		// fmt.Println(origToDestDistance, distanceFare.Distance, distanceFare.Fare)
 		if float64(lastDistance) < origToDestDistance && origToDestDistance < float64(distanceFare.Distance) {
 			break
 		}
 		lastDistance = distanceFare.Distance
 		lastFare = distanceFare.Fare
 	}
-
 	return lastFare, nil
 }
 
@@ -121,7 +111,7 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
 	for _, fare := range fareList {
 		if !date.Before(fare.StartDate) {
-			fmt.Println(fare.StartDate, fare.FareMultiplier)
+			// fmt.Println(fare.StartDate, fare.FareMultiplier)
 			selectedFare = fare
 		}
 	}

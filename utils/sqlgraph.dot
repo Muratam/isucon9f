@@ -19,77 +19,59 @@
         fontname = "Helvetica",
         style = "dashed",
     ];
-      a2 -> a4; 
-a2[label="fare
-Calc"];
-a4[label="get
-Distance
-Fare"];
-a9 -> a6; 
-a9[label="reservation
+      a7 -> a4; 
+a7[label="reservation
 Payment
 Handler"];
-a6[label="get
+a4[label="get
 User"];
-a11 -> a2; 
-a11[label="train
+a9 -> a4; 
+a9[label="train
 Reservation
 Handler"];
-a2[label="fare
-Calc"];
-a11 -> a6; 
-a11[label="train
-Reservation
-Handler"];
-a6[label="get
+a4[label="get
 User"];
-a12 -> a2; 
-a12[label="train
+a10 -> a2; 
+a10[label="train
 Search
 Handler"];
-a2[label="fare
-Calc"];
-a12 -> a3; 
-a12[label="train
-Search
-Handler"];
-a3[label="get
+a2[label="get
 Available
 Seats
 Count"];
-a14 -> a6; 
-a14[label="user
+a12 -> a4; 
+a12[label="user
 Reservation
 Cancel
 Handler"];
-a6[label="get
+a4[label="get
 User"];
-a15 -> a6; 
-a15[label="user
+a13 -> a4; 
+a13[label="user
 Reservation
 Response
 Handler"];
-a6[label="get
+a4[label="get
 User"];
-a15 -> a8; 
-a15[label="user
+a13 -> a6; 
+a13[label="user
 Reservation
 Response
 Handler"];
-a8[label="make
+a6[label="make
 Reservation
 Response"];
-a16 -> a6; 
-a16[label="user
+a14 -> a4; 
+a14[label="user
 Reservations
 Handler"];
-a6[label="get
+a4[label="get
 User"];
-a16 -> a8; 
-a16[label="user
+a14 -> a6; 
+a14[label="user
 Reservations
 Handler"];
-a8[label="make
+a6[label="make
 Reservation
 Response"];
 
@@ -100,66 +82,80 @@ _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 a1[label="distance
 Fare
 Handler"];
-station_master -> a2[style="bold"][dir="none"];
-station_master[label="station
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-fare_master -> a2[style="bold"][dir="none"];
-fare_master[label="fare
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a2[label="fare
-Calc"];
-seat_reservations -> a3[style="bold"][dir="none"];
+seat_reservations -> a2[style="bold"][dir="none"];
 seat_reservations[label="seat
 _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a3[label="get
+a2[label="get
 Available
 Seats
 Count"];
-distance_fare_master -> a4[style="bold"][dir="none"];
-distance_fare_master[label="distance
-_fare
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a4[label="get
-Distance
-Fare"];
-station_master -> a5[style="bold"][dir="none"];
+station_master -> a3[style="bold"][dir="none"];
 station_master[label="station
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a5[label="get
+a3[label="get
 Stations
 Handler"];
-users -> a6[style="bold"][dir="none"];
+users -> a4[style="bold"][dir="none"];
 users[label="users",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a6[label="get
+a4[label="get
 User"];
-users -> a7[style="bold"][dir="none"];
+users -> a5[style="bold"][dir="none"];
 users[label="users",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a7[label="login
+a5[label="login
 Handler"];
-train_timetable_master -> a8[style="bold"][dir="none"];
+train_timetable_master -> a6[style="bold"][dir="none"];
 train_timetable_master[label="train
 _timetable
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-seat_reservations -> a8[style="bold"][dir="none"];
+seat_reservations -> a6[style="bold"][dir="none"];
 seat_reservations[label="seat
 _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-seat_master -> a8[style="bold"][dir="none"];
+seat_master -> a6[style="bold"][dir="none"];
 seat_master[label="seat
 _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a8[label="make
+a6[label="make
 Reservation
 Response"];
-reservations -> a9[style="bold"][dir="none"];
+reservations -> a7[style="bold"][dir="none"];
 reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a9 -> reservations[style="bold",dir="none",label="UPDATE",color="#f08060",fontcolor="#f08060"];
+a7 -> reservations[style="bold",dir="none",label="UPDATE",color="#f08060",fontcolor="#f08060"];
 reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a9[label="reservation
+a7[label="reservation
 Payment
 Handler"];
-a10 -> users[style="bold",dir="none",label="INSERT",color="#f08060",fontcolor="#f08060"];
+a8 -> users[style="bold",dir="none",label="INSERT",color="#f08060",fontcolor="#f08060"];
 users[label="users",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a10[label="sign
+a8[label="sign
 Up
+Handler"];
+train_master -> a9[style="bold"][dir="none"];
+train_master[label="train
+_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+seat_master -> a9[style="bold"][dir="none"];
+seat_master[label="seat
+_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+seat_reservations -> a9[style="bold"][dir="none"];
+seat_reservations[label="seat
+_reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+reservations -> a9[style="bold"][dir="none"];
+reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+a9 -> reservations[style="bold",dir="none",label="INSERT",color="#f08060",fontcolor="#f08060"];
+reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+a9 -> seat_reservations[style="bold",dir="none",label="INSERT",color="#f08060",fontcolor="#f08060"];
+seat_reservations[label="seat
+_reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+a9[label="train
+Reservation
+Handler"];
+train_master -> a10[style="bold"][dir="none"];
+train_master[label="train
+_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+train_timetable_master -> a10[style="bold"][dir="none"];
+train_timetable_master[label="train
+_timetable
+_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
+a10[label="train
+Search
 Handler"];
 train_master -> a11[style="bold"][dir="none"];
 train_master[label="train
@@ -170,58 +166,29 @@ _master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 seat_reservations -> a11[style="bold"][dir="none"];
 seat_reservations[label="seat
 _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-reservations -> a11[style="bold"][dir="none"];
-reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a11 -> reservations[style="bold",dir="none",label="INSERT",color="#f08060",fontcolor="#f08060"];
-reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a11 -> seat_reservations[style="bold",dir="none",label="INSERT",color="#f08060",fontcolor="#f08060"];
-seat_reservations[label="seat
-_reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
 a11[label="train
-Reservation
-Handler"];
-train_master -> a12[style="bold"][dir="none"];
-train_master[label="train
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-train_timetable_master -> a12[style="bold"][dir="none"];
-train_timetable_master[label="train
-_timetable
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a12[label="train
-Search
-Handler"];
-train_master -> a13[style="bold"][dir="none"];
-train_master[label="train
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-seat_master -> a13[style="bold"][dir="none"];
-seat_master[label="seat
-_master",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-seat_reservations -> a13[style="bold"][dir="none"];
-seat_reservations[label="seat
-_reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a13[label="train
 Seats
 Handler"];
-reservations -> a14[style="bold"][dir="none"];
+reservations -> a12[style="bold"][dir="none"];
 reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a14 -> reservations[style="bold",dir="none",label="DELETE",color="#f08060",fontcolor="#f08060"];
+a12 -> reservations[style="bold",dir="none",label="DELETE",color="#f08060",fontcolor="#f08060"];
 reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a14 -> seat_reservations[style="bold",dir="none",label="DELETE",color="#f08060",fontcolor="#f08060"];
+a12 -> seat_reservations[style="bold",dir="none",label="DELETE",color="#f08060",fontcolor="#f08060"];
 seat_reservations[label="seat
 _reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a14[label="user
+a12[label="user
 Reservation
 Cancel
 Handler"];
-reservations -> a15[style="bold"][dir="none"];
+reservations -> a13[style="bold"][dir="none"];
 reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a15[label="user
+a13[label="user
 Reservation
 Response
 Handler"];
-reservations -> a16[style="bold"][dir="none"];
+reservations -> a14[style="bold"][dir="none"];
 reservations[label="reservations",shape=box, style="filled, bold, rounded", fillcolor="#ffffcc"];
-a16[label="user
+a14[label="user
 Reservations
 Handler"];
 
