@@ -161,7 +161,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !usable {
-			err = fmt.Errorf("invalid train_class")
+			err = fmt.Errorf("post:invalid train_class")
 			log.Print(err)
 			errorResponse(w, http.StatusBadRequest, err.Error())
 			return
