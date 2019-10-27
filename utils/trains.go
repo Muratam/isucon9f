@@ -15,10 +15,13 @@ type Train struct {
 }
 var initialTrains = func()[]Train{
 	result := make([]Train,len(rawTrainData))
-	startTime, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", "2020-01-01 00:00:00 +0800 CST")
+	now, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", "2020-01-01 00:00:00 +0800 CST")
 	for i,raw := range rawTrainData{
+		if i % 192 == 191{
+			now = now.AddDate(0,0,1)
+		}
 		result[i] = Train{
-			startTime.addDate(0,0,(i / 192)),
+			now,
 			raw.DepartureAt,
 			raw.TrainClass,
 			strconv.Itoa((i%192)+1),
