@@ -1,15 +1,16 @@
 package main
 
 import (
+	"time"
+
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
-	"time"
 )
 
 const (
-	sessionName   = "session_isutrain"
-	availableDays = 100
-	cancelInterval = 2000 * time.Millisecond
+	sessionName    = "session_isutrain"
+	availableDays  = 100
+	cancelInterval = 500 * time.Millisecond
 )
 
 var (
@@ -22,3 +23,7 @@ var (
 )
 
 var dbx *sqlx.DB
+
+// TODO: 複数台だとたぶんこれはだめなのでいいかんじに
+// var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMasterServerIP)
+var idToUserServer = NewSyncMapServerConn("127.0.0.1:8884", true)

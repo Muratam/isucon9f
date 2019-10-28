@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"goji.io/pat"
 )
 
@@ -29,25 +28,8 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStationsHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		駅一覧
-			GET /api/stations
-
-		return []Station{}
-	*/
-
-	stations := []Station{}
-
-	query := "SELECT * FROM station_master ORDER BY id"
-	err := dbx.Select(&stations, query)
-	if err != nil {
-		log.Print("failed to get stations:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(stations)
+	json.NewEncoder(w).Encode(initialStationsByID)
 }
 
 func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
@@ -92,29 +74,20 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	isNobori := fromStation.Distance > toStation.Distance
 	usableTrainClassList := getUsableTrainClassList(fromStation, toStation)
 
-	var inQuery string
-	var inArgs []interface{}
-
-	if trainClass == "" {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=?"
-		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
-	} else {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
-		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
+	if trainClass != "" {
+		ok := false
+		for _, cl := range usableTrainClassList {
+			if cl == trainClass {
+				ok = true
+			}
+		}
+		if !ok {
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		usableTrainClassList = []string{trainClass}
 	}
-	if err != nil {
-		log.Print("failed to search train: failed to sqlx.In:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	trainList := []Train{}
-	err = dbx.Select(&trainList, inQuery, inArgs...)
-	if err != nil {
-		log.Print("failed to search train: failed to select trainList:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
+	trainList := searchTrain(date, usableTrainClassList, isNobori)
 	// 上りだったら駅リストを逆にする
 	stations := []Station{}
 	if isNobori {
@@ -122,8 +95,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		stations = initialStationsByID
 	}
-	// fmt.Println("From", fromStation)
-	// fmt.Println("To", toStation)
 
 	trainSearchResponseList := []TrainSearchResponse{}
 
@@ -168,11 +139,10 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 		if isContainsOriginStation && isContainsDestStation {
 			// 列車情報
-
 			// 所要時間
 			var departure, arrival string
 
-			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, fromStation.Name)
+			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainName, fromStation.Name)
 			if err != nil {
 				log.Print("failed to search train: failed to get departure time:", err)
 				errorResponse(w, http.StatusInternalServerError, err.Error())
@@ -191,7 +161,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, toStation.Name)
+			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainName, toStation.Name)
 			if err != nil {
 				log.Print("failed to search train: failed to get arrival time:", err)
 				errorResponse(w, http.StatusInternalServerError, err.Error())
@@ -322,15 +292,9 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	toName := r.URL.Query().Get("to")
 
 	// 対象列車の取得
-	var train Train
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-	err = dbx.Get(&train, query, date.Format("2006/01/02"), trainClass, trainName)
-	if err == sql.ErrNoRows {
-		errorResponse(w, http.StatusNotFound, "列車が存在しません")
-	}
+	train, err := getTrainWithClass(date, trainName, trainClass)
 	if err != nil {
-		log.Print("failed to get seats: failed to get train:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
+		errorResponse(w, http.StatusNotFound, "列車が存在しません")
 		return
 	}
 	// From
@@ -363,8 +327,51 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seatList := []Seat{}
+	type Resv struct {
+		Departure  string `json:"departure" db:"departure"`
+		Arrival    string `json:"arrival" db:"arrival"`
+		CarNumber  int    `json:"car_number,omitempty" db:"car_number"`
+		SeatRow    int    `json:"seat_row" db:"seat_row"`
+		SeatColumn string `json:"seat_column" db:"seat_column"`
+	}
+	resvs := []Resv{}
+	query := `
+	SELECT departure,arrival,sm.car_number,sm.seat_row,sm.seat_column
+	FROM seat_master as sm
+	INNER JOIN seat_reservations sr ON sr.car_number = sm.car_number AND sr.seat_row = sm.seat_row AND sr.seat_column = sm.seat_column
+	INNER JOIN reservations r ON r.reservation_id = sr.reservation_id
+	WHERE sm.train_class=? AND sm.car_number=? AND date=? AND train_name=?
+ 	`
+	err = dbx.Select(&resvs, query, trainClass, carNumber, date.Format("2006/01/02"), trainName)
+	if err != nil {
+		log.Print("failed to get seats: failed to get seat list:", err)
+		errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	toKey := func(carNumber int, seatRow int, seatColumn string) string {
+		return strconv.Itoa(carNumber) + seatColumn + strconv.Itoa(seatRow)
+	}
+	occupiedMap := map[string]bool{}
+	for _, resv := range resvs {
+		departureStation, _ := getStationByName[resv.Departure]
+		arrivalStation, _ := getStationByName[resv.Arrival]
+		if train.IsNobori {
+			// 上り
+			if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+			} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+			} else {
+				occupiedMap[toKey(resv.CarNumber, resv.SeatRow, resv.SeatColumn)] = true
+			}
+		} else {
+			if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+			} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+			} else {
+				occupiedMap[toKey(resv.CarNumber, resv.SeatRow, resv.SeatColumn)] = true
+			}
+		}
+	}
 
+	seatList := []Seat{}
 	query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
 	err = dbx.Select(&seatList, query, trainClass, carNumber)
 	if err != nil {
@@ -372,79 +379,14 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	var seatInformationList []SeatInformation
-
+	seatInformationList := []SeatInformation{}
 	for _, seat := range seatList {
-
 		s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
-
-		reservationList := []Reservation{}
-
-		query := `SELECT r.* FROM seat_reservations s, reservations r WHERE r.reservation_id=s.reservation_id AND r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
-
-		err = dbx.Select(
-			&reservationList, query,
-			date.Format("2006/01/02"),
-			seat.TrainClass,
-			trainName,
-			seat.CarNumber,
-			seat.SeatRow,
-			seat.SeatColumn,
-		)
-		if err != nil {
-			log.Print("failed to get seats: failed to get reservation list:", err)
-			errorResponse(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		for _, reservation := range reservationList {
-			departureStation, _ := getStationByName[reservation.Departure]
-			arrivalStation, _ := getStationByName[reservation.Arrival]
-			if train.IsNobori {
-				// 上り
-				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
-					// pass
-				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
-					// pass
-				} else {
-					s.IsOccupied = true
-				}
-
-			} else {
-				// 下り
-
-				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
-					// pass
-				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
-					// pass
-				} else {
-					s.IsOccupied = true
-				}
-
-			}
-		}
-
-		fmt.Println(s.IsOccupied)
+		s.IsOccupied = occupiedMap[toKey(carNumber, seat.SeatRow, seat.SeatColumn)]
 		seatInformationList = append(seatInformationList, s)
 	}
-
 	// 各号車の情報
-
-	simpleCarInformationList := []SimpleCarInformation{}
-	seat := Seat{}
-	query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column LIMIT 1"
-	i := 1
-	for {
-		err = dbx.Get(&seat, query, trainClass, i)
-		if err != nil {
-			break
-		}
-		simpleCarInformationList = append(simpleCarInformationList, SimpleCarInformation{i, seat.SeatClass})
-		i = i + 1
-	}
-
-	c := CarInformation{date.Format("2006/01/02"), trainClass, trainName, carNumber, seatInformationList, simpleCarInformationList}
+	c := CarInformation{date.Format("2006/01/02"), trainClass, trainName, carNumber, seatInformationList, initialSimpleCarInformation[trainClassNameToIndex(trainClass)]}
 	resp, err := json.Marshal(c)
 	if err != nil {
 		log.Print("failed to get seats: failed to json.Marshal", err)

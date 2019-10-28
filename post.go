@@ -4,6 +4,7 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,22 +13,22 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
-	"crypto/tls"
+
 	"goji.io/pat"
 	"golang.org/x/crypto/pbkdf2"
 )
-func initializeHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		initialize
-	*/
 
+func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := dbx.Exec("TRUNCATE seat_reservations")
 	if err != nil {
 		panic(err)
 	}
 	dbx.Exec("TRUNCATE reservations")
 	dbx.Exec("TRUNCATE users")
+	idToUserServer.FlushAll()
+	sessionCache = sync.Map{}
 
 	resp := InitializeResponse{
 		availableDays,
@@ -38,37 +39,6 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		列車の席予約API　支払いはまだ
-		POST /api/train/reserve
-			{
-				"date": "2020-12-31T07:57:00+09:00",
-				"train_name": "183",
-				"train_class": "中間",
-				"car_number": 7,
-				"is_smoking_seat": false,
-				"seat_class": "reserved",
-				"departure": "東京",
-				"arrival": "名古屋",
-				"child": 2,
-				"adult": 1,
-				"column": "A",
-				"seats": [
-					{
-					"row": 3,
-					"column": "B"
-					},
-						{
-					"row": 4,
-					"column": "C"
-					}
-				]
-		}
-		レスポンスで予約IDを返す
-		reservationResponse(w http.ResponseWriter, errCode int, id int, ok bool, message string)
-	*/
-
-	// json parse
 	req := new(TrainReservationRequest)
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -77,7 +47,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err.Error())
 		return
 	}
-
 	// 乗車日の日付表記統一
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	date, err := time.Parse(time.RFC3339, req.Date)
@@ -86,7 +55,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err.Error())
 	}
 	date = date.In(jst)
-
 	if !checkAvailableDate(date) {
 		errorResponse(w, http.StatusNotFound, "予約可能期間外です")
 		return
@@ -106,21 +74,9 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 列車データを取得
-	tmas := Train{}
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-	err = dbx.Get(
-		&tmas, query,
-		date.Format("2006/01/02"),
-		req.TrainClass,
-		req.TrainName,
-	)
-	if err == sql.ErrNoRows {
-		errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
-		log.Println(err.Error())
-		return
-	}
+	tmas, err := getTrainWithClass(date, req.TrainName, req.TrainClass)
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, "列車データの取得に失敗しました")
+		errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
 		log.Println(err.Error())
 		return
 	}
@@ -182,27 +138,21 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	query := ""
 
 	//	あいまい座席検索
 	//	seatsが空白の時に発動する
+	aimai := len(req.Seats) == 0
 	switch len(req.Seats) {
 	case 0:
 		if req.SeatClass == "non-reserved" {
 			break // non-reservedはそもそもあいまい検索もせずダミーのRow/Columnで予約を確定させる。
 		}
 		//当該列車・号車中の空き座席検索
-		var train Train
-		query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-		err = dbx.Get(&train, query, date.Format("2006/01/02"), req.TrainClass, req.TrainName)
-		if err == sql.ErrNoRows {
+		train, err := getTrainWithClass(date, req.TrainName, req.TrainClass)
+		if err != nil {
 			panic(err)
 		}
-		if err != nil {
-			log.Print("failed to trainReservation: failed to get train:", err)
-			errorResponse(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
 		usableTrainClassList := getUsableTrainClassList(fromStation, toStation)
 		usable := false
 		for _, v := range usableTrainClassList {
@@ -211,70 +161,66 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !usable {
-			err = fmt.Errorf("invalid train_class")
+			err = fmt.Errorf("post:invalid train_class")
 			log.Print(err)
 			errorResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		req.Seats = []RequestSeat{} // 座席リクエスト情報は空に
+		type Resv struct {
+			Departure  string `json:"departure" db:"departure"`
+			Arrival    string `json:"arrival" db:"arrival"`
+			CarNumber  int    `json:"car_number,omitempty" db:"car_number"`
+			SeatRow    int    `json:"seat_row" db:"seat_row"`
+			SeatColumn string `json:"seat_column" db:"seat_column"`
+		}
+		toKey := func(carNumber int, seatRow int, seatColumn string) string {
+			return strconv.Itoa(carNumber) + seatColumn + strconv.Itoa(seatRow)
+		}
+		resvs := []Resv{}
+		query = "SELECT departure,arrival,car_number,seat_row,seat_column FROM reservations r NATURAL JOIN seat_reservations WHERE date=? AND train_name=? FOR UPDATE"
+		err = dbx.Select(
+			&resvs, query,
+			date.Format("2006/01/02"),
+			req.TrainName,
+		)
+		if err != nil {
+			log.Print("failed to trainReservation: failed to get reservation list:", err)
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		seatList := getSeatsWithIsSmoking(req.IsSmokingSeat, req.SeatClass, req.TrainClass)
+		seatInformationLists := make([][]SeatInformation, 16)
+		for i := 0; i < 16; i++ {
+			seatInformationLists[i] = []SeatInformation{}
+		}
+
+		occupiedMap := map[string]bool{}
+		for _, resv := range resvs {
+			departureStation, _ := getStationByName[resv.Departure]
+			arrivalStation, _ := getStationByName[resv.Arrival]
+			if train.IsNobori { // 上り
+				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+					continue
+				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+					continue
+				}
+			} else { // 下り
+				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+					continue
+				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+					continue
+				}
+			}
+			occupiedMap[toKey(resv.CarNumber, resv.SeatRow, resv.SeatColumn)] = true
+		}
+		for _, seat := range seatList {
+			s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
+			s.IsOccupied = occupiedMap[toKey(seat.CarNumber, seat.SeatRow, seat.SeatColumn)]
+			seatInformationLists[seat.CarNumber-1] = append(seatInformationLists[seat.CarNumber-1], s)
+		}
 		for carnum := 1; carnum <= 16; carnum++ {
-			seatList := []Seat{}
-			query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? AND seat_class=? AND is_smoking_seat=? ORDER BY seat_row, seat_column"
-			err = dbx.Select(&seatList, query, req.TrainClass, carnum, req.SeatClass, req.IsSmokingSeat)
-			if err != nil {
-				log.Print("failed to trainReservation: failed t get seat list:", err)
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-
-			var seatInformationList []SeatInformation
-			for _, seat := range seatList {
-				s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
-				reservationList := []Reservation{}
-				query = "SELECT r.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
-				err = dbx.Select(
-					&reservationList, query,
-					date.Format("2006/01/02"),
-					seat.TrainClass,
-					req.TrainName,
-					seat.CarNumber,
-					seat.SeatRow,
-					seat.SeatColumn,
-				)
-				if err != nil {
-					log.Print("failed to trainReservation: failed to get reservation list:", err)
-					errorResponse(w, http.StatusBadRequest, err.Error())
-					return
-				}
-
-				for _, reservation := range reservationList {
-					departureStation, _ := getStationByName[reservation.Departure]
-					arrivalStation, _ := getStationByName[reservation.Arrival]
-					if train.IsNobori {
-						// 上り
-						if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
-							// pass
-						} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
-							// pass
-						} else {
-							s.IsOccupied = true
-						}
-					} else {
-						// 下り
-						if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
-							// pass
-						} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
-							// pass
-						} else {
-							s.IsOccupied = true
-						}
-					}
-				}
-
-				seatInformationList = append(seatInformationList, s)
-			}
-
 			// 曖昧予約席とその他の候補席を選出
 			var seatnum int           // 予約する座席の合計数
 			var reserved bool         // あいまい指定席確保済フラグ
@@ -290,10 +236,9 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			var CandidateSeat RequestSeat
 			CandidateSeats := []RequestSeat{}
-
 			// シート分だけ回して予約できる席を検索
 			var i int
-			for _, seat := range seatInformationList {
+			for _, seat := range seatInformationLists[carnum-1] {
 				if seat.Column == req.Column && !seat.IsOccupied && !reserved && vargue { // あいまい席があいてる
 					VagueSeat.Row = seat.Row
 					VagueSeat.Column = seat.Column
@@ -312,26 +257,26 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			if i > 0 { // 候補席があった
 				req.Seats = append(req.Seats, CandidateSeats...) // 予約候補席追加
 			}
-
+			// リクエストに対して席数が足りてない
+			// 次の号車にうつしたい
 			if len(req.Seats) < req.Adult+req.Child {
 				// リクエストに対して席数が足りてない
 				// 次の号車にうつしたい
-				fmt.Println("-----------------")
-				fmt.Printf("現在検索中の車両: %d号車, リクエスト座席数: %d, 予約できそうな座席数: %d, 不足数: %d\n", carnum, req.Adult+req.Child, len(req.Seats), req.Adult+req.Child-len(req.Seats))
-				fmt.Println("リクエストに対して座席数が不足しているため、次の車両を検索します。")
+				// fmt.Println("-----------------")
+				// fmt.Printf("現在検索中の車両: リクエスト座席数: %d, 予約できそうな座席数: %d, 不足数: %d\n", req.Adult+req.Child, len(req.Seats), req.Adult+req.Child-len(req.Seats))
+				// fmt.Println("リクエストに対して座席数が不足しているため、次の車両を検索します。")
 				req.Seats = []RequestSeat{}
 				if carnum == 16 {
-					fmt.Println("この新幹線にまとめて予約できる席数がなかったから検索をやめるよ")
+					// fmt.Println("この新幹線にまとめて予約できる席数がなかったから検索をやめるよ")
 					req.Seats = []RequestSeat{}
 					break
 				}
 			}
-			fmt.Printf("空き実績: %d号車 シート:%v 席数:%d\n", carnum, req.Seats, len(req.Seats))
+			// fmt.Printf("空き実績: %d号車 シート:%v 席数:%d\n", carnum, req.Seats, len(req.Seats))
 			if len(req.Seats) >= req.Adult+req.Child {
-				fmt.Println("予約情報に追加したよ")
+				// fmt.Println("予約情報に追加したよ")
 				req.Seats = req.Seats[:req.Adult+req.Child]
 				req.CarNumber = carnum
-				break
 			}
 		}
 		if len(req.Seats) == 0 {
@@ -363,114 +308,99 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 当該列車・列車名の予約一覧取得
 	tx := dbx.MustBegin()
-	reservations := []Reservation{}
-	query = "SELECT * FROM reservations WHERE date=? AND train_class=? AND train_name=? FOR UPDATE"
-	err = tx.Select(
-		&reservations, query,
-		date.Format("2006/01/02"),
-		req.TrainClass,
-		req.TrainName,
-	)
-	if err != nil {
-		tx.Rollback()
-		errorResponse(w, http.StatusInternalServerError, "列車予約情報の取得に失敗しました")
-		log.Println(err.Error())
-		return
-	}
-
-	for _, reservation := range reservations {
-		if req.SeatClass == "non-reserved" {
-			break
-		}
+	if !aimai {
 		// train_masterから列車情報を取得(上り・下りが分かる)
-		tmas = Train{}
-		query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-		err = tx.Get(
-			&tmas, query,
-			date.Format("2006/01/02"),
-			req.TrainClass,
-			req.TrainName,
-		)
-		if err == sql.ErrNoRows {
-			tx.Rollback()
-			errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
-			log.Println(err.Error())
-			return
-		}
+		tmas, err := getTrainWithClass(date, req.TrainName, req.TrainClass)
 		if err != nil {
 			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "列車データの取得に失敗しました")
-			log.Println(err.Error())
+			errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
 			return
 		}
-
-		// 予約情報の乗車区間の駅IDを求める
-		reservedfromStation, ok := getStationByName[reservation.Departure]
-		if !ok {
+		reservations := []Reservation{}
+		query = "SELECT * FROM reservations WHERE date=? AND train_name=? FOR UPDATE"
+		err = tx.Select(
+			&reservations, query,
+			date.Format("2006/01/02"),
+			req.TrainName,
+		)
+		if err != nil {
 			tx.Rollback()
-			errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の乗車駅データがみつかりません")
-			log.Println(err.Error())
-			return
-		}
-		reservedtoStation, ok := getStationByName[reservation.Arrival]
-		if !ok {
-			tx.Rollback()
-			errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の降車駅データがみつかりません")
+			errorResponse(w, http.StatusInternalServerError, "列車予約情報の取得に失敗しました")
 			log.Println(err.Error())
 			return
 		}
 
-		// 予約の区間重複判定
-		secdup := false
-		if tmas.IsNobori {
-			// 上り
-			if toStation.ID < reservedtoStation.ID && fromStation.ID <= reservedtoStation.ID {
-				// pass
-			} else if toStation.ID >= reservedfromStation.ID && fromStation.ID > reservedfromStation.ID {
-				// pass
-			} else {
-				secdup = true
+		for _, reservation := range reservations {
+			if req.SeatClass == "non-reserved" {
+				break
 			}
-		} else {
-			// 下り
-			if fromStation.ID < reservedfromStation.ID && toStation.ID <= reservedfromStation.ID {
-				// pass
-			} else if fromStation.ID >= reservedtoStation.ID && toStation.ID > reservedtoStation.ID {
-				// pass
-			} else {
-				secdup = true
-			}
-		}
-
-		if secdup {
-
-			// 区間重複の場合は更に座席の重複をチェックする
-			SeatReservations := []SeatReservation{}
-			query := "SELECT * FROM seat_reservations WHERE reservation_id=? FOR UPDATE"
-			err = tx.Select(
-				&SeatReservations, query,
-				reservation.ReservationId,
-			)
-			if err != nil {
+			// 予約情報の乗車区間の駅IDを求める
+			reservedfromStation, ok := getStationByName[reservation.Departure]
+			if !ok {
 				tx.Rollback()
-				errorResponse(w, http.StatusInternalServerError, "座席予約情報の取得に失敗しました")
+				errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の乗車駅データがみつかりません")
+				log.Println(err.Error())
+				return
+			}
+			reservedtoStation, ok := getStationByName[reservation.Arrival]
+			if !ok {
+				tx.Rollback()
+				errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の降車駅データがみつかりません")
 				log.Println(err.Error())
 				return
 			}
 
-			for _, v := range SeatReservations {
-				for _, seat := range req.Seats {
-					if v.CarNumber == req.CarNumber && v.SeatRow == seat.Row && v.SeatColumn == seat.Column {
-						tx.Rollback()
-						fmt.Println("Duplicated ", reservation)
-						errorResponse(w, http.StatusBadRequest, "リクエストに既に予約された席が含まれています")
-						return
+			// 予約の区間重複判定
+			secdup := false
+			if tmas.IsNobori {
+				// 上り
+				if toStation.ID < reservedtoStation.ID && fromStation.ID <= reservedtoStation.ID {
+					// pass
+				} else if toStation.ID >= reservedfromStation.ID && fromStation.ID > reservedfromStation.ID {
+					// pass
+				} else {
+					secdup = true
+				}
+			} else {
+				// 下り
+				if fromStation.ID < reservedfromStation.ID && toStation.ID <= reservedfromStation.ID {
+					// pass
+				} else if fromStation.ID >= reservedtoStation.ID && toStation.ID > reservedtoStation.ID {
+					// pass
+				} else {
+					secdup = true
+				}
+			}
+
+			if secdup {
+				// 区間重複の場合は更に座席の重複をチェックする
+				SeatReservations := []SeatReservation{}
+				query := "SELECT * FROM seat_reservations WHERE reservation_id=? FOR UPDATE"
+				err = tx.Select(
+					&SeatReservations, query,
+					reservation.ReservationId,
+				)
+				if err != nil {
+					tx.Rollback()
+					errorResponse(w, http.StatusInternalServerError, "座席予約情報の取得に失敗しました")
+					log.Println(err.Error())
+					return
+				}
+
+				for _, v := range SeatReservations {
+					for _, seat := range req.Seats {
+						if v.CarNumber == req.CarNumber && v.SeatRow == seat.Row && v.SeatColumn == seat.Column {
+							tx.Rollback()
+							fmt.Println("Duplicated ", reservation)
+							errorResponse(w, http.StatusBadRequest, "リクエストに既に予約された席が含まれています")
+							return
+						}
 					}
 				}
 			}
 		}
+		// 3段階の予約前チェック終わり
 	}
-	// 3段階の予約前チェック終わり
 
 	// 自由席は強制的にSeats情報をダミーにする（自由席なのに席指定予約は不可）
 	if req.SeatClass == "non-reserved" {
@@ -679,12 +609,12 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println(payment_api)
 	tr := &http.Transport{
-    TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-  }
-  client := &http.Client{
-    Transport: tr,
-  }
-  // http.Post
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+	// http.Post
 	resp, err := client.Post(payment_api+"/payment", "application/json", bytes.NewBuffer(j))
 	if err != nil {
 		tx.Rollback()
@@ -758,9 +688,6 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	user := User{}
 	json.Unmarshal(buf, &user)
-
-	// TODO: validation
-
 	salt := make([]byte, 1024)
 	_, err := crand.Read(salt)
 	if err != nil {
@@ -768,7 +695,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusInternalServerError, "salt generator error")
 		return
 	}
-	superSecurePassword := pbkdf2.Key([]byte(user.Password), salt, 100, 256, sha256.New)
+	superSecurePassword := pbkdf2.Key([]byte(user.Password), salt, 1, 256, sha256.New)
 
 	_, err = dbx.Exec(
 		"INSERT INTO `users` (`email`, `salt`, `super_secure_password`) VALUES (?, ?, ?)",
@@ -776,6 +703,11 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 		salt,
 		superSecurePassword,
 	)
+	user.Salt = salt
+	user.HashedPassword = superSecurePassword
+	l := idToUserServer.DBSize() + 1
+	user.ID = int64(l)
+	idToUserServer.Set(strconv.Itoa(l), user)
 	if err != nil {
 		log.Print("failed to sign up: failed to exec insert:", err)
 		errorResponse(w, http.StatusBadRequest, "user registration failed")
@@ -810,7 +742,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	challengePassword := pbkdf2.Key([]byte(postUser.Password), user.Salt, 100, 256, sha256.New)
+	challengePassword := pbkdf2.Key([]byte(postUser.Password), user.Salt, 1, 256, sha256.New)
 
 	if !bytes.Equal(user.HashedPassword, challengePassword) {
 		errorResponse(w, http.StatusForbidden, "authentication failed")
@@ -854,13 +786,13 @@ var cancelCh = func() chan string {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 		client := &http.Client{
-			Timeout: time.Duration(10) * time.Second,
+			Timeout:   time.Duration(10) * time.Second,
 			Transport: tr,
 		}
 
 		for {
 			select {
-			case <- ticker:
+			case <-ticker:
 				if len(ids) == 0 {
 					continue
 				}
@@ -891,16 +823,13 @@ var cancelCh = func() chan string {
 				if err != nil {
 					log.Println("cancel: ", err.Error())
 				}
-
-				// if output.Deleted != len(ids) {
+				if output.Deleted != len(ids) {
 					log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
-				// }
-
+				}
 				ids = ids[:0]
-
 				resp.Body.Close()
 				log.Println("cancel: finish cancel")
-			case id := <- ch:
+			case id := <-ch:
 				ids = append(ids, id)
 				log.Println("cancel: id", id, "added")
 			}
@@ -922,9 +851,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "incorrect item id")
 		return
 	}
-
 	tx := dbx.MustBegin()
-
 	reservation := Reservation{}
 	query := "SELECT * FROM reservations WHERE reservation_id=? AND user_id=?"
 	err = tx.Get(&reservation, query, itemID, user.ID)
@@ -939,19 +866,11 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "予約情報の検索に失敗しました")
 	}
-
-	switch reservation.Status {
-	case "rejected":
+	if reservation.Status == "rejected" {
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "何らかの理由により予約はRejected状態です")
 		return
-	case "done":
-		// 支払いをキャンセルする
-		cancelCh <- reservation.PaymentId
-	default:
-		// pass(requesting状態のものはpayment_id無いので叩かない)
 	}
-
 	query = "DELETE FROM reservations WHERE reservation_id=? AND user_id=?"
 	_, err = tx.Exec(query, itemID, user.ID)
 	if err != nil {
@@ -960,13 +879,11 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	query = "DELETE FROM seat_reservations WHERE reservation_id=?"
 	_, err = tx.Exec(query, itemID)
 	if err == sql.ErrNoRows {
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "seat naiyo")
-		// errorResponse(w, http.Status, "authentication failed")
 		return
 	}
 	if err != nil {
@@ -975,7 +892,10 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	tx.Commit()
+	if reservation.Status == "done" {
+		cancelCh <- reservation.PaymentId
+	}
+
 	messageResponse(w, "cancell complete")
 }

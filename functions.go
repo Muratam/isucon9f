@@ -8,11 +8,13 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
+
+	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
-	// "sync"
 )
 
 func getSession(r *http.Request) *sessions.Session {
@@ -20,22 +22,34 @@ func getSession(r *http.Request) *sessions.Session {
 	return session
 }
 
+var sessionCache = sync.Map{}
+
+func sessUserID(r *http.Request) (int64, bool) {
+	cookie, err := r.Cookie(sessionName)
+	if err == nil {
+		if val, ok := sessionCache.Load(cookie.Value); ok {
+			return val.(int64), true
+		} else {
+			session := getSession(r)
+			userID, ok := session.Values["user_id"]
+			if !ok {
+				return -1, false
+			}
+			sessionCache.Store(cookie.Value, userID.(int64))
+			return userID.(int64), true
+		}
+	}
+	return -1, false
+}
+
 func getUser(r *http.Request) (user User, errCode int, errMsg string) {
-	session := getSession(r)
-	userID, ok := session.Values["user_id"]
+	userID, ok := sessUserID(r)
 	if !ok {
 		return user, http.StatusUnauthorized, "no session"
 	}
-
-	err := dbx.Get(&user, "SELECT * FROM `users` WHERE `id` = ?", userID)
-	if err == sql.ErrNoRows {
+	if !idToUserServer.Get(strconv.Itoa(int(userID)), &user) {
 		return user, http.StatusUnauthorized, "user not found"
 	}
-	if err != nil {
-		log.Print(err)
-		return user, http.StatusInternalServerError, "db error"
-	}
-
 	return user, http.StatusOK, ""
 }
 
@@ -125,16 +139,16 @@ func makeReservationResponse(reservation Reservation) (ReservationResponse, erro
 	var departure, arrival string
 	err := dbx.Get(
 		&departure,
-		"SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?",
-		reservation.Date.Format("2006/01/02"), reservation.TrainClass, reservation.TrainName, reservation.Departure,
+		"SELECT departure FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
+		reservation.Date.Format("2006/01/02"), reservation.TrainName, reservation.Departure,
 	)
 	if err != nil {
 		return reservationResponse, err
 	}
 	err = dbx.Get(
 		&arrival,
-		"SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?",
-		reservation.Date.Format("2006/01/02"), reservation.TrainClass, reservation.TrainName, reservation.Arrival,
+		"SELECT arrival FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
+		reservation.Date.Format("2006/01/02"), reservation.TrainName, reservation.Arrival,
 	)
 	if err != nil {
 		return reservationResponse, err
@@ -162,19 +176,7 @@ func makeReservationResponse(reservation Reservation) (ReservationResponse, erro
 		reservationResponse.SeatClass = "non-reserved"
 	} else {
 		// 座席種別を取得
-		seat := Seat{}
-		query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? AND seat_column=? AND seat_row=?"
-		err = dbx.Get(
-			&seat, query,
-			reservation.TrainClass, reservationResponse.CarNumber,
-			reservationResponse.Seats[0].SeatColumn, reservationResponse.Seats[0].SeatRow,
-		)
-		if err == sql.ErrNoRows {
-			return reservationResponse, err
-		}
-		if err != nil {
-			return reservationResponse, err
-		}
+		seat := initialSimpleCarInformation[trainClassNameToIndex(reservation.TrainClass)][reservationResponse.CarNumber-1]
 		reservationResponse.SeatClass = seat.SeatClass
 	}
 
@@ -230,34 +232,38 @@ func getUsableTrainClassList(fromStation Station, toStation Station) []string {
 	return ret
 }
 
+var availableSeatMapss = func() [][]map[int]bool {
+	result := make([][]map[int]bool, 3)
+	for ri, trainClass := range fromTrainClassI {
+		// 全ての座席を取得する
+		premium_avail_seats := getSeatsWithIsSmoking(false, "premium", trainClass)
+		premium_smoke_avail_seats := getSeatsWithIsSmoking(true, "premium", trainClass)
+		reserved_avail_seats := getSeatsWithIsSmoking(false, "reserved", trainClass)
+		reserved_smoke_avail_seats := getSeatsWithIsSmoking(true, "reserved", trainClass)
+		availableSeatMaps := make([]map[int]bool, 4)
+		for i := 0; i < 4; i++ {
+			availableSeatMaps[i] = map[int]bool{}
+		}
+		for _, seat := range premium_avail_seats {
+			availableSeatMaps[0][seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = true
+		}
+		for _, seat := range premium_smoke_avail_seats {
+			availableSeatMaps[1][seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = true
+		}
+		for _, seat := range reserved_avail_seats {
+			availableSeatMaps[2][seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = true
+		}
+		for _, seat := range reserved_smoke_avail_seats {
+			availableSeatMaps[3][seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = true
+		}
+		result[ri] = availableSeatMaps
+	}
+	return result
+}()
+
 func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station) (int, int, int, int, error) {
 	// 指定種別の空き座席を返す
-
 	var err error
-
-	// 全ての座席を取得する
-	// query := "SELECT * FROM seat_master WHERE train_class=? AND seat_class=? AND is_smoking_seat=?"
-	premium_avail_seats := getSeatsWithIsSmoking(false, "premium", train.TrainClass)
-	premium_smoke_avail_seats := getSeatsWithIsSmoking(true, "premium", train.TrainClass)
-	reserved_avail_seats := getSeatsWithIsSmoking(false, "reserved", train.TrainClass)
-	reserved_smoke_avail_seats := getSeatsWithIsSmoking(true, "reserved", train.TrainClass)
-	availableSeatMap1 := map[int]Seat{}
-	availableSeatMap2 := map[int]Seat{}
-	availableSeatMap3 := map[int]Seat{}
-	availableSeatMap4 := map[int]Seat{}
-	// TODO: ここは先にキャッシュできる
-	for _, seat := range premium_avail_seats {
-		availableSeatMap1[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
-	}
-	for _, seat := range premium_smoke_avail_seats {
-		availableSeatMap2[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
-	}
-	for _, seat := range reserved_avail_seats {
-		availableSeatMap3[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
-	}
-	for _, seat := range reserved_smoke_avail_seats {
-		availableSeatMap4[seat.CarNumber*1000+seat.SeatRow*10+SeatClassNameToIndex(seat.SeatColumn)] = seat
-	}
 
 	// すでに取られている予約を取得する
 	query := `
@@ -285,14 +291,21 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-
+	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(train.TrainClass)]
+	embeds := make([]map[int]bool, 4)
+	for i := 0; i < 4; i++ {
+		embeds[i] = map[int]bool{}
+	}
 	for _, seatReservation := range seatReservationList {
 		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
-		delete(availableSeatMap1, key)
-		delete(availableSeatMap2, key)
-		delete(availableSeatMap3, key)
-		delete(availableSeatMap4, key)
+		for i := 0; i < 4; i++ {
+			if availableSeatMaps[i][key] {
+				embeds[i][key] = true
+			}
+		}
 	}
-
-	return len(availableSeatMap1), len(availableSeatMap2), len(availableSeatMap3), len(availableSeatMap4), nil
+	return len(availableSeatMaps[0]) - len(embeds[0]),
+		len(availableSeatMaps[1]) - len(embeds[1]),
+		len(availableSeatMaps[2]) - len(embeds[2]),
+		len(availableSeatMaps[3]) - len(embeds[3]), nil
 }
