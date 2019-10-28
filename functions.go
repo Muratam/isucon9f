@@ -261,7 +261,7 @@ var availableSeatMapss = func() [][]map[int]bool {
 	return result
 }()
 
-func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station) (int, int, int, int, error) {
+func getAvailableSeatsCount(trainClass string, trainName string, fromStation Station, toStation Station) (int, int, int, int, error) {
 	// 指定種別の空き座席を返す
 	type Resv struct {
 		Departure  string `json:"departure" db:"departure"`
@@ -276,21 +276,23 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	FROM reservations r
 	INNER JOIN seat_reservations s
 		ON r.reservation_id = s.reservation_id
-	WHERE r.train_class=? AND r.train_name=? AND r.date=?
+	WHERE r.train_class=? AND r.train_name=?
 	`
-	err := dbx.Select(&resvs, query, train.TrainClass, train.TrainName, train.Date)
+	err := dbx.Select(&resvs, query, trainClass, trainName)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(train.TrainClass)]
+	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(trainClass)]
 	embeds := make([]map[int]bool, 4)
 	for i := 0; i < 4; i++ {
 		embeds[i] = map[int]bool{}
 	}
+	xx, _ := strconv.Atoi(trainName)
+	isNobori := xx%2 == 1
 	for _, resv := range resvs {
 		departureStation, _ := getStationByName[resv.Departure]
 		arrivalStation, _ := getStationByName[resv.Arrival]
-		if train.IsNobori { // 上り
+		if isNobori { // 上り
 			if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
 				continue
 			} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {

@@ -168,7 +168,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats, err := train.getAvailableSeatsCount(fromStation, toStation)
+			premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats, err := getAvailableSeatsCount(train.TrainClass, train.TrainName, fromStation, toStation)
 			if err != nil {
 				log.Print("failed to search train: failed to get available seats count", err)
 				errorResponse(w, http.StatusBadRequest, err.Error())
