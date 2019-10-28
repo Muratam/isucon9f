@@ -271,13 +271,18 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	var availableSeatMaps []map[int]bool
-	copy(availableSeatMapss[trainClassNameToIndex(train.TrainClass)], availableSeatMaps)
+	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(train.TrainClass)]
+	embeds := make([]map[int]bool, 4)
 	for _, seatReservation := range seatReservationList {
 		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
 		for i := 0; i < 4; i++ {
-			delete(availableSeatMaps[i], key)
+			if availableSeatMaps[i][key] {
+				embeds[i][key] = true
+			}
 		}
 	}
-	return len(availableSeatMaps[0]), len(availableSeatMaps[1]), len(availableSeatMaps[2]), len(availableSeatMaps[3]), nil
+	return len(availableSeatMaps[0]) - len(embeds[0]),
+		len(availableSeatMaps[1]) - len(embeds[1]),
+		len(availableSeatMaps[2]) - len(embeds[2]),
+		len(availableSeatMaps[3]) - len(embeds[3]), nil
 }
