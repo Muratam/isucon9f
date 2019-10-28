@@ -349,10 +349,10 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	resvs := []Resv{}
 	query := `
 	SELECT *
-	FROM (SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column) as sm
+	FROM seat_master as sm
 	INNER JOIN seat_reservations sr ON sr.car_number = sm.car_number AND sr.seat_row = sm.seat_row AND sr.seat_column = sm.seat_column
-	INNER JOIN reservations r ON r.reservation_id=sr.reservation_id
-	WHERE date=? AND train_name=?
+	INNER JOIN reservations r ON r.reservation_id = sr.reservation_id
+	WHERE sm.train_class=? AND sm.car_number=? AND date=? AND train_name=?
  	`
 	err = dbx.Select(&resvs, query, trainClass, carNumber, date.Format("2006/01/02"), trainName)
 	if err != nil {
