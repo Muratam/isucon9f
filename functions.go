@@ -273,6 +273,9 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	}
 	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(train.TrainClass)]
 	embeds := make([]map[int]bool, 4)
+	for i := 0; i < 4; i++ {
+		embeds[i] = map[int]bool{}
+	}
 	for _, seatReservation := range seatReservationList {
 		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
 		for i := 0; i < 4; i++ {
