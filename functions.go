@@ -272,7 +272,7 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 		return 0, 0, 0, 0, err
 	}
 	var availableSeatMaps []map[int]bool
-	copy(availableSeatMaps, availableSeatMapss[trainClassNameToIndex(train.TrainClass)])
+	copy(availableSeatMapss[trainClassNameToIndex(train.TrainClass)], availableSeatMaps)
 	for _, seatReservation := range seatReservationList {
 		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
 		for i := 0; i < 4; i++ {
