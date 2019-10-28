@@ -25,7 +25,7 @@ func getSession(r *http.Request) *sessions.Session {
 var sessionCache = sync.Map{}
 
 func sessUserID(r *http.Request) (int64, bool) {
-	cookie, err := r.Cookie("session")
+	cookie, err := r.Cookie(sessionName)
 	if err == nil {
 		if val, ok := sessionCache.Load(cookie.Value); ok {
 			return val.(int64), true
