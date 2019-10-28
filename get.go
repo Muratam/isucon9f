@@ -338,9 +338,53 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type Resv struct {
+		Departure  string `json:"departure" db:"departure"`
+		Arrival    string `json:"arrival" db:"arrival"`
+		CarNumber  int    `json:"car_number,omitempty" db:"car_number"`
+		SeatRow    int    `json:"seat_row" db:"seat_row"`
+		SeatColumn string `json:"seat_column" db:"seat_column"`
+	}
 	var seatInformationList []SeatInformation
+	resvs := []Resv{}
+	query := `
+	SELECT departure,arrival,car_number,seat_row,seat_column
+	FROM (SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column) as sm
+	INNER JOIN seat_reservations sr ON sr.car_number = sm.car_number AND sr.seat_row = sm.seat_row AND sr.seat_column = sm.seat_column
+	INNER JOIN reservations r ON r.reservation_id=sr.reservation_id
+	WHERE date=? AND train_name=?
+ 	`
+	err = dbx.Select(&resvs, query, trainClass, carNumber, date.Format("2006/01/02"), trainName)
+	if err != nil {
+		log.Print("failed to get seats: failed to get seat list:", err)
+		errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	toKey := func(carNumber int, seatRow int, seatColumn string) string {
+		return strconv.Itoa(carNumber) + seatColumn + strconv.Itoa(seatRow)
+	}
+	occupiedMap := map[string]bool{}
+	for _, resv := range resvs {
+		departureStation, _ := getStationByName[resv.Departure]
+		arrivalStation, _ := getStationByName[resv.Arrival]
+		if train.IsNobori {
+			// 上り
+			if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+			} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+			} else {
+				occupiedMap[toKey(resv.CarNumber, resv.SeatRow, resv.SeatColumn)] = true
+			}
+		} else {
+			if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+			} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+			} else {
+				occupiedMap[toKey(resv.CarNumber, resv.SeatRow, resv.SeatColumn)] = true
+			}
+		}
+	}
+
 	seatList := []Seat{}
-	query := "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
+	query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
 	err = dbx.Select(&seatList, query, trainClass, carNumber)
 	if err != nil {
 		log.Print("failed to get seats: failed to get seat list:", err)
@@ -349,41 +393,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, seat := range seatList {
 		s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
-		reservationList := []Reservation{}
-		query := `SELECT r.* FROM seat_reservations s, reservations r WHERE r.reservation_id=s.reservation_id AND r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
-
-		err = dbx.Select(
-			&reservationList, query,
-			date.Format("2006/01/02"),
-			seat.TrainClass,
-			trainName,
-			seat.CarNumber,
-			seat.SeatRow,
-			seat.SeatColumn,
-		)
-		if err != nil {
-			log.Print("failed to get seats: failed to get reservation list:", err)
-			errorResponse(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		for _, reservation := range reservationList {
-			departureStation, _ := getStationByName[reservation.Departure]
-			arrivalStation, _ := getStationByName[reservation.Arrival]
-			if train.IsNobori {
-				// 上り
-				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
-				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
-				} else {
-					s.IsOccupied = true
-				}
-			} else {
-				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
-				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
-				} else {
-					s.IsOccupied = true
-				}
-			}
-		}
+		s.IsOccupied = occupiedMap[toKey(carNumber, seat.SeatRow, seat.SeatColumn)]
 		seatInformationList = append(seatInformationList, s)
 	}
 
