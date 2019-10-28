@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"goji.io/pat"
@@ -20,10 +21,6 @@ import (
 )
 
 func initializeHandler(w http.ResponseWriter, r *http.Request) {
-	/*
-		initialize
-	*/
-
 	_, err := dbx.Exec("TRUNCATE seat_reservations")
 	if err != nil {
 		panic(err)
@@ -31,6 +28,7 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	dbx.Exec("TRUNCATE reservations")
 	dbx.Exec("TRUNCATE users")
 	idToUserServer.FlushAll()
+	sessionCache = sync.Map{}
 
 	resp := InitializeResponse{
 		availableDays,
