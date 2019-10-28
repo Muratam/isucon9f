@@ -169,61 +169,59 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		req.Seats = []RequestSeat{} // 座席リクエスト情報は空に
+		type Resv struct {
+			Departure  string `json:"departure" db:"departure"`
+			Arrival    string `json:"arrival" db:"arrival"`
+			CarNumber  int    `json:"car_number,omitempty" db:"car_number"`
+			SeatRow    int    `json:"seat_row" db:"seat_row"`
+			SeatColumn string `json:"seat_column" db:"seat_column"`
+		}
+		toKey := func(carNumber int, seatRow int, seatColumn string) string {
+			return strconv.Itoa(carNumber) + seatColumn + strconv.Itoa(seatRow)
+		}
+		resvs := []Resv{}
+		query = "SELECT departure,arrival,car_number,seat_row,seat_column FROM reservations r NATURAL JOIN seat_reservations WHERE date=? AND train_name=? FOR UPDATE"
+		err = dbx.Select(
+			&resvs, query,
+			date.Format("2006/01/02"),
+			req.TrainName,
+		)
+		if err != nil {
+			log.Print("failed to trainReservation: failed to get reservation list:", err)
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		seatList := getSeatsWithIsSmoking(req.IsSmokingSeat, req.SeatClass, req.TrainClass)
+		seatInformationLists := make([][]SeatInformation, 16)
+		for i := 0; i < 16; i++ {
+			seatInformationLists[i] = []SeatInformation{}
+		}
+
+		occupiedMap := map[string]bool{}
+		for _, resv := range resvs {
+			departureStation, _ := getStationByName[resv.Departure]
+			arrivalStation, _ := getStationByName[resv.Arrival]
+			if train.IsNobori { // 上り
+				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+					continue
+				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+					continue
+				}
+			} else { // 下り
+				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+					continue
+				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+					continue
+				}
+			}
+			occupiedMap[toKey(resv.CarNumber, resv.SeatRow, resv.SeatColumn)] = true
+		}
+		for _, seat := range seatList {
+			s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
+			s.IsOccupied = occupiedMap[toKey(seat.CarNumber, seat.SeatRow, seat.SeatColumn)]
+			seatInformationLists[seat.CarNumber-1] = append(seatInformationLists[seat.CarNumber-1], s)
+		}
 		for carnum := 1; carnum <= 16; carnum++ {
-			seatList := []Seat{}
-			query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? AND seat_class=? AND is_smoking_seat=? ORDER BY seat_row, seat_column"
-			err = dbx.Select(&seatList, query, req.TrainClass, carnum, req.SeatClass, req.IsSmokingSeat)
-			if err != nil {
-				log.Print("failed to trainReservation: failed t get seat list:", err)
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-
-			var seatInformationList []SeatInformation
-			for _, seat := range seatList {
-				s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
-				reservationList := []Reservation{}
-				query = "SELECT r.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
-				err = dbx.Select(
-					&reservationList, query,
-					date.Format("2006/01/02"),
-					req.TrainName,
-					seat.CarNumber,
-					seat.SeatRow,
-					seat.SeatColumn,
-				)
-				if err != nil {
-					log.Print("failed to trainReservation: failed to get reservation list:", err)
-					errorResponse(w, http.StatusBadRequest, err.Error())
-					return
-				}
-
-				for _, reservation := range reservationList {
-					departureStation, _ := getStationByName[reservation.Departure]
-					arrivalStation, _ := getStationByName[reservation.Arrival]
-					if train.IsNobori {
-						// 上り
-						if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
-							// pass
-						} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
-							// pass
-						} else {
-							s.IsOccupied = true
-						}
-					} else {
-						// 下り
-						if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
-							// pass
-						} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
-							// pass
-						} else {
-							s.IsOccupied = true
-						}
-					}
-				}
-				seatInformationList = append(seatInformationList, s)
-			}
-
 			// 曖昧予約席とその他の候補席を選出
 			var seatnum int           // 予約する座席の合計数
 			var reserved bool         // あいまい指定席確保済フラグ
@@ -239,10 +237,9 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			var CandidateSeat RequestSeat
 			CandidateSeats := []RequestSeat{}
-
 			// シート分だけ回して予約できる席を検索
 			var i int
-			for _, seat := range seatInformationList {
+			for _, seat := range seatInformationLists[carnum-1] {
 				if seat.Column == req.Column && !seat.IsOccupied && !reserved && vargue { // あいまい席があいてる
 					VagueSeat.Row = seat.Row
 					VagueSeat.Column = seat.Column
@@ -261,26 +258,26 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			if i > 0 { // 候補席があった
 				req.Seats = append(req.Seats, CandidateSeats...) // 予約候補席追加
 			}
-
+			// リクエストに対して席数が足りてない
+			// 次の号車にうつしたい
 			if len(req.Seats) < req.Adult+req.Child {
 				// リクエストに対して席数が足りてない
 				// 次の号車にうつしたい
-				fmt.Println("-----------------")
-				fmt.Printf("現在検索中の車両: %d号車, リクエスト座席数: %d, 予約できそうな座席数: %d, 不足数: %d\n", carnum, req.Adult+req.Child, len(req.Seats), req.Adult+req.Child-len(req.Seats))
-				fmt.Println("リクエストに対して座席数が不足しているため、次の車両を検索します。")
+				// fmt.Println("-----------------")
+				// fmt.Printf("現在検索中の車両: リクエスト座席数: %d, 予約できそうな座席数: %d, 不足数: %d\n", req.Adult+req.Child, len(req.Seats), req.Adult+req.Child-len(req.Seats))
+				// fmt.Println("リクエストに対して座席数が不足しているため、次の車両を検索します。")
 				req.Seats = []RequestSeat{}
 				if carnum == 16 {
-					fmt.Println("この新幹線にまとめて予約できる席数がなかったから検索をやめるよ")
+					// fmt.Println("この新幹線にまとめて予約できる席数がなかったから検索をやめるよ")
 					req.Seats = []RequestSeat{}
 					break
 				}
 			}
-			fmt.Printf("空き実績: %d号車 シート:%v 席数:%d\n", carnum, req.Seats, len(req.Seats))
+			// fmt.Printf("空き実績: %d号車 シート:%v 席数:%d\n", carnum, req.Seats, len(req.Seats))
 			if len(req.Seats) >= req.Adult+req.Child {
-				fmt.Println("予約情報に追加したよ")
+				// fmt.Println("予約情報に追加したよ")
 				req.Seats = req.Seats[:req.Adult+req.Child]
 				req.CarNumber = carnum
-				break
 			}
 		}
 		if len(req.Seats) == 0 {
