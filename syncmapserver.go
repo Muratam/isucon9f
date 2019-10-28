@@ -22,9 +22,8 @@ import (
 const maxSyncMapServerConnectionNum = 50
 const defaultReadBufferSize = 8192                 // ガッと取ったほうが良い。メモリを使用したくなければ 1024.逆なら65536
 const RedisHostPrivateIPAddress = "172.24.122.185" // ここで指定したサーバーに(Redis /SyncMapServerを) 建てる
-// `NewSyncMapServerConn(GetMasterServerAddress()+":8884", MyServerIsOnMasterServerIP()) `
-const SyncMapBackUpPath = "./syncmapbackup-" // カレントディレクトリにバックアップを作成。パーミッションに注意。
-const InitMarkPath = "./init-"               // 初期化データ
+const SyncMapBackUpPath = "./syncmapbackup-"       // カレントディレクトリにバックアップを作成。パーミッションに注意。
+const InitMarkPath = "./init-"                     // 初期化データ
 // 起動後この秒数毎にバックアップファイルを作成する(デフォルトでBackUpが作成される設定)
 // /initialize の 120秒後にBackUpとかが多分いい感じかも。
 // Redis は save 900 1 \n save 300 10 \n save 60 10000 とかを手動で設定ファイルに書くとよさそう

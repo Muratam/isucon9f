@@ -355,8 +355,8 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var seatInformationList []SeatInformation
 	seatList := []Seat{}
-
 	query := "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
 	err = dbx.Select(&seatList, query, trainClass, carNumber)
 	if err != nil {
@@ -364,15 +364,9 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	var seatInformationList []SeatInformation
-
 	for _, seat := range seatList {
-
 		s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
-
 		reservationList := []Reservation{}
-
 		query := `SELECT r.* FROM seat_reservations s, reservations r WHERE r.reservation_id=s.reservation_id AND r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?`
 
 		err = dbx.Select(
@@ -389,31 +383,22 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 			errorResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
-
 		for _, reservation := range reservationList {
 			departureStation, _ := getStationByName[reservation.Departure]
 			arrivalStation, _ := getStationByName[reservation.Arrival]
 			if train.IsNobori {
 				// 上り
 				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
-					// pass
 				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
-					// pass
 				} else {
 					s.IsOccupied = true
 				}
-
 			} else {
-				// 下り
-
 				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
-					// pass
 				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
-					// pass
 				} else {
 					s.IsOccupied = true
 				}
-
 			}
 		}
 		seatInformationList = append(seatInformationList, s)

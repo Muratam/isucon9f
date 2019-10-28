@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -26,16 +27,9 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	if !ok {
 		return user, http.StatusUnauthorized, "no session"
 	}
-
-	err := dbx.Get(&user, "SELECT * FROM `users` WHERE `id` = ?", userID)
-	if err == sql.ErrNoRows {
+	if !idToUserServer.Get(strconv.Itoa(int(userID.(int64))), &user) {
 		return user, http.StatusUnauthorized, "user not found"
 	}
-	if err != nil {
-		log.Print(err)
-		return user, http.StatusInternalServerError, "db error"
-	}
-
 	return user, http.StatusOK, ""
 }
 

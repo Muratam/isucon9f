@@ -30,6 +30,7 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	dbx.Exec("TRUNCATE reservations")
 	dbx.Exec("TRUNCATE users")
+	idToUserServer.FlushAll()
 
 	resp := InitializeResponse{
 		availableDays,
@@ -689,9 +690,6 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	user := User{}
 	json.Unmarshal(buf, &user)
-
-	// TODO: validation
-
 	salt := make([]byte, 1024)
 	_, err := crand.Read(salt)
 	if err != nil {
@@ -707,6 +705,11 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 		salt,
 		superSecurePassword,
 	)
+	user.Salt = salt
+	user.HashedPassword = superSecurePassword
+	l := idToUserServer.DBSize() + 1
+	user.ID = int64(l)
+	idToUserServer.Set(strconv.Itoa(l), user)
 	if err != nil {
 		log.Print("failed to sign up: failed to exec insert:", err)
 		errorResponse(w, http.StatusBadRequest, "user registration failed")
