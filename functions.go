@@ -139,16 +139,16 @@ func makeReservationResponse(reservation Reservation) (ReservationResponse, erro
 	var departure, arrival string
 	err := dbx.Get(
 		&departure,
-		"SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?",
-		reservation.Date.Format("2006/01/02"), reservation.TrainClass, reservation.TrainName, reservation.Departure,
+		"SELECT departure FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
+		reservation.Date.Format("2006/01/02"), reservation.TrainName, reservation.Departure,
 	)
 	if err != nil {
 		return reservationResponse, err
 	}
 	err = dbx.Get(
 		&arrival,
-		"SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?",
-		reservation.Date.Format("2006/01/02"), reservation.TrainClass, reservation.TrainName, reservation.Arrival,
+		"SELECT arrival FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
+		reservation.Date.Format("2006/01/02"), reservation.TrainName, reservation.Arrival,
 	)
 	if err != nil {
 		return reservationResponse, err
