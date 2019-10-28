@@ -156,16 +156,6 @@ func makeReservationResponse(reservation Reservation) (ReservationResponse, erro
 		reservationResponse.SeatClass = "non-reserved"
 	} else {
 		// 座席種別を取得
-		// seat := Seat{}
-		// query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? AND seat_column=? AND seat_row=?"
-		// err = dbx.Get(
-		// 	&seat, query,
-		// 	reservation.TrainClass, reservationResponse.CarNumber,
-		// 	reservationResponse.Seats[0].SeatColumn, reservationResponse.Seats[0].SeatRow,
-		// )
-		// if err != nil {
-		// 	return reservationResponse, err
-		// }
 		seat := initialSimpleCarInformation[trainClassNameToIndex(reservation.TrainClass)][reservationResponse.CarNumber-1]
 		reservationResponse.SeatClass = seat.SeatClass
 	}
