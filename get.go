@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"goji.io/pat"
 )
 
@@ -75,29 +74,20 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	isNobori := fromStation.Distance > toStation.Distance
 	usableTrainClassList := getUsableTrainClassList(fromStation, toStation)
 
-	var inQuery string
-	var inArgs []interface{}
-
-	if trainClass == "" {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=?"
-		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
-	} else {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
-		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
+	if trainClass != "" {
+		ok := false
+		for _, cl := range usableTrainClassList {
+			if cl == trainClass {
+				ok = true
+			}
+		}
+		if !ok {
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		usableTrainClassList = []string{trainClass}
 	}
-	if err != nil {
-		log.Print("failed to search train: failed to sqlx.In:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	trainList := []Train{}
-	err = dbx.Select(&trainList, inQuery, inArgs...)
-	if err != nil {
-		log.Print("failed to search train: failed to select trainList:", err)
-		errorResponse(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
+	trainList := searchTrain(date, usableTrainClassList, isNobori)
 	// 上りだったら駅リストを逆にする
 	stations := []Station{}
 	if isNobori {

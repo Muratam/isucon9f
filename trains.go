@@ -34,7 +34,6 @@ func getTrainRaw(dayI int, name int) Train {
 }
 
 // date=? AND train_class=? AND train_name=?
-//
 func getTrain(date time.Time, trainnameStr string) (Train, error) {
 	if date.Year() != 2020 {
 		return Train{}, errors.New("invalid date:" + date.String() + trainnameStr)
@@ -48,6 +47,32 @@ func getTrain(date time.Time, trainnameStr string) (Train, error) {
 	}
 	duration := int(date.Sub(startDay2020).Hours()) / 24
 	return getTrainRaw(duration, trainname-1), nil
+}
+
+// date=? AND train_class IN (?) AND is_nobori=?
+func searchTrain(date time.Time, trainClass []string, is_nobori bool) []Train {
+	if date.Year() != 2020 {
+		return []Train{}
+	}
+	result := []Train{}
+	day := int(date.Sub(startDay2020).Hours()) / 24
+	for i := 0; i < 192; i++ {
+		if (is_nobori && i%2 == 0) || (!is_nobori && i%2 == 1) {
+			continue
+		}
+		train := getTrainRaw(day, i)
+		ok := false
+		for _, cl := range trainClass {
+			if train.TrainClass == cl {
+				ok = true
+			}
+		}
+		if !ok {
+			continue
+		}
+		result = append(result, train)
+	}
+	return result
 }
 
 // name -> class は固定ではないので
