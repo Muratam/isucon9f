@@ -107,12 +107,12 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	arrsList := []Arrs{}
 	dbx.Select(
 		&depsList,
-		"SELECT departure, train_name FROM train_timetable_master WHERE date=? AND station IN ?",
+		"SELECT departure, train_name FROM train_timetable_master WHERE date=? AND station = ?",
 		date.Format("2006/01/02"),
 		fromStation.Name)
 	dbx.Select(
 		&arrsList,
-		"SELECT arrival, train_name FROM train_timetable_master WHERE date=? AND station IN ?",
+		"SELECT arrival, train_name FROM train_timetable_master WHERE date=? AND station = ?",
 		date.Format("2006/01/02"),
 		toStation.Name)
 	deps := map[string]string{}
