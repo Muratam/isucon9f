@@ -276,9 +276,9 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	FROM seat_reservations s
 	INNER JOIN reservations r
 		ON r.reservation_id = s.reservation_id
-	WHERE r.date=? AND r.train_name=?
+	WHERE r.train_class=? AND r.train_name=?
 	`
-	err := dbx.Select(&resvs, query, train.Date, train.TrainName)
+	err := dbx.Select(&resvs, query, train.TrainClass, train.TrainName)
 
 	if err != nil {
 		return 0, 0, 0, 0, err
