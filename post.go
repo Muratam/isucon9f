@@ -825,13 +825,10 @@ var cancelCh = func() chan string {
 				if err != nil {
 					log.Println("cancel: ", err.Error())
 				}
-
-				// if output.Deleted != len(ids) {
-				log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
-				// }
-
+				if output.Deleted != len(ids) {
+					log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
+				}
 				ids = ids[:0]
-
 				resp.Body.Close()
 				log.Println("cancel: finish cancel")
 			case id := <-ch:

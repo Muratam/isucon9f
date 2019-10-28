@@ -10,7 +10,7 @@ import (
 const (
 	sessionName    = "session_isutrain"
 	availableDays  = 100
-	cancelInterval = 2000 * time.Millisecond
+	cancelInterval = 500 * time.Millisecond
 )
 
 var (
