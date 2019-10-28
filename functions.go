@@ -273,8 +273,8 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	resvs := []Resv{}
 	query := `
 	SELECT departure,arrival,car_number,seat_row,seat_column
-	FROM seat_reservations s
-	INNER JOIN reservations r
+	FROM reservations r
+	INNER JOIN seat_reservations s
 		ON r.reservation_id = s.reservation_id
 	WHERE r.train_class=? AND r.train_name=?
 	`
