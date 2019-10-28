@@ -97,32 +97,35 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	type Deps struct {
 		TrainName string `db:"train_name"`
+		Station   string `db:"station"`
 		Departure string `db:"departure"`
-	}
-	type Arrs struct {
-		TrainName string `db:"train_name"`
 		Arrival   string `db:"arrival"`
 	}
 	depsList := []Deps{}
-	arrsList := []Arrs{}
+	arrsList := []Deps{}
 	dbx.Select(
 		&depsList,
-		"SELECT departure, train_name FROM train_timetable_master WHERE date=? AND station = ?",
+		"SELECT departure, train_name,arrival,station FROM train_timetable_master WHERE date=? AND station = ?",
 		date.Format("2006/01/02"),
 		fromStation.Name)
 	dbx.Select(
 		&arrsList,
-		"SELECT arrival, train_name FROM train_timetable_master WHERE date=? AND station = ?",
+		"SELECT arrival, train_name,departure,station FROM train_timetable_master WHERE date=? AND station = ?",
 		date.Format("2006/01/02"),
 		toStation.Name)
 	deps := map[string]string{}
 	arrs := map[string]string{}
 	for _, dep := range depsList {
 		deps[dep.TrainName] = dep.Departure
+		key := date.Format("2006/01/02") + ":" + dep.TrainName + dep.Station
+		reservationCache.Store(key, ReservationCacheDepArr{dep.Departure, dep.Arrival})
 	}
-	for _, arr := range arrsList {
-		arrs[arr.TrainName] = arr.Arrival
+	for _, dep := range arrsList {
+		arrs[dep.TrainName] = dep.Arrival
+		key := date.Format("2006/01/02") + ":" + dep.TrainName + dep.Station
+		reservationCache.Store(key, ReservationCacheDepArr{dep.Departure, dep.Arrival})
 	}
+
 	trainSearchResponseList := []TrainSearchResponse{}
 	mayTrains := []Train{}
 	for _, train := range trainList {

@@ -132,28 +132,32 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	return int(float64(distFare) * selectedFare.FareMultiplier), nil
 }
 
+var reservationCache = sync.Map{}
+
+type ReservationCacheDepArr struct {
+	Departure string `json:"departure" db:"departure"`
+	Arrival   string `json:"arrival" db:"arrival"`
+}
+
+func checkTimeTable(date *time.Time, trainName string, station string) ReservationCacheDepArr {
+	key := date.Format("2006/01/02") + ":" + trainName + station
+	if result, ok := reservationCache.Load(key); ok {
+		return result.(ReservationCacheDepArr)
+	}
+	var result ReservationCacheDepArr
+	dbx.Get(
+		&result,
+		"SELECT departure,arrival FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
+		date.Format("2006/01/02"), trainName, station,
+	)
+	reservationCache.Store(key, result)
+	return result
+}
+
 func makeReservationResponse(reservation Reservation) (ReservationResponse, error) {
-
 	reservationResponse := ReservationResponse{}
-
-	var departure, arrival string
-	err := dbx.Get(
-		&departure,
-		"SELECT departure FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
-		reservation.Date.Format("2006/01/02"), reservation.TrainName, reservation.Departure,
-	)
-	if err != nil {
-		return reservationResponse, err
-	}
-	err = dbx.Get(
-		&arrival,
-		"SELECT arrival FROM train_timetable_master WHERE date=? AND train_name=? AND station=?",
-		reservation.Date.Format("2006/01/02"), reservation.TrainName, reservation.Arrival,
-	)
-	if err != nil {
-		return reservationResponse, err
-	}
-
+	departure := checkTimeTable(reservation.Date, reservation.TrainName, reservation.Departure).Departure
+	arrival := checkTimeTable(reservation.Date, reservation.TrainName, reservation.Arrival).Arrival
 	reservationResponse.ReservationId = reservation.ReservationId
 	reservationResponse.Date = reservation.Date.Format("2006/01/02")
 	reservationResponse.Amount = reservation.Amount
@@ -167,11 +171,9 @@ func makeReservationResponse(reservation Reservation) (ReservationResponse, erro
 	reservationResponse.ArrivalTime = arrival
 
 	query := "SELECT * FROM seat_reservations WHERE reservation_id=?"
-	err = dbx.Select(&reservationResponse.Seats, query, reservation.ReservationId)
-
+	dbx.Select(&reservationResponse.Seats, query, reservation.ReservationId)
 	// 1つの予約内で車両番号は全席同じ
 	reservationResponse.CarNumber = reservationResponse.Seats[0].CarNumber
-
 	if reservationResponse.Seats[0].CarNumber == 0 {
 		reservationResponse.SeatClass = "non-reserved"
 	} else {
