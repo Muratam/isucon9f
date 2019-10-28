@@ -289,7 +289,10 @@ func getAvailableSeatsChunk(trains []Train, fromStation Station, toStation Stati
 	INNER JOIN (values ` + values + `) t(train_class,train_name)
 	  ON t.train_class = r.train_class AND t.train_name = r.train_name
 	`
-	dbx.Select(&resvs, query)
+	err := dbx.Select(&resvs, query)
+	if err != nil {
+		log.Fatal(err)
+	}
 	result := map[string][]int{}
 	for _, resv := range resvs {
 		xx, _ := strconv.Atoi(resv.TrainName)
