@@ -29,6 +29,7 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	dbx.Exec("TRUNCATE users")
 	idToUserServer.FlushAll()
 	sessionCache = sync.Map{}
+	reservationCache = sync.Map{}
 
 	resp := InitializeResponse{
 		availableDays,

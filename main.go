@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+
 	//"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -56,9 +57,9 @@ func main() {
 	fmt.Println("HOST:" + host)
 	port := os.Getenv("MYSQL_PORT")
 	if port == "" {
-	 	port = "3306"
+		port = "3306"
 	}
-	fmt.Println("PORT:"+port)
+	fmt.Println("PORT:" + port)
 	user := os.Getenv("MYSQL_USER")
 	if user == "" {
 		user = "isutrain"
