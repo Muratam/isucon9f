@@ -156,6 +156,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			departureDate = departureDate.Add(time.Duration(2) * time.Minute)
 
 			if !date.Before(departureDate) {
 				// 乗りたい時刻より出発時刻が前なので除外

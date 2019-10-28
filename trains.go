@@ -86,15 +86,3 @@ func getTrainWithClass(date time.Time, trainnameStr string, trainclassStr string
 	}
 	return train, nil
 }
-
-// var initialTrains = func() []Train {
-// 	result := make([]Train, 70272)
-// 	i := 0
-// 	for dayI, raws := range RTNData {
-// 		for name, _ := range raws {
-// 			result[i] = getTrainRaw(dayI, name)
-// 			i += 1
-// 		}
-// 	}
-// 	return result
-// }()
