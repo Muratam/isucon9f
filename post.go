@@ -697,7 +697,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusInternalServerError, "salt generator error")
 		return
 	}
-	superSecurePassword := pbkdf2.Key([]byte(user.Password), salt, 100, 256, sha256.New)
+	superSecurePassword := pbkdf2.Key([]byte(user.Password), salt, 1, 256, sha256.New)
 
 	_, err = dbx.Exec(
 		"INSERT INTO `users` (`email`, `salt`, `super_secure_password`) VALUES (?, ?, ?)",
@@ -744,7 +744,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	challengePassword := pbkdf2.Key([]byte(postUser.Password), user.Salt, 100, 256, sha256.New)
+	challengePassword := pbkdf2.Key([]byte(postUser.Password), user.Salt, 1, 256, sha256.New)
 
 	if !bytes.Equal(user.HashedPassword, challengePassword) {
 		errorResponse(w, http.StatusForbidden, "authentication failed")
