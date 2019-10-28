@@ -143,6 +143,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 
 	//	あいまい座席検索
 	//	seatsが空白の時に発動する
+	aimai := len(req.Seats) == 0
 	switch len(req.Seats) {
 	case 0:
 		if req.SeatClass == "non-reserved" {
@@ -312,113 +313,115 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 当該列車・列車名の予約一覧取得
 	tx := dbx.MustBegin()
-	reservations := []Reservation{}
-	query = "SELECT * FROM reservations WHERE date=? AND train_class=? AND train_name=? FOR UPDATE"
-	err = tx.Select(
-		&reservations, query,
-		date.Format("2006/01/02"),
-		req.TrainClass,
-		req.TrainName,
-	)
-	if err != nil {
-		tx.Rollback()
-		errorResponse(w, http.StatusInternalServerError, "列車予約情報の取得に失敗しました")
-		log.Println(err.Error())
-		return
-	}
-
-	for _, reservation := range reservations {
-		if req.SeatClass == "non-reserved" {
-			break
-		}
-		// train_masterから列車情報を取得(上り・下りが分かる)
-		tmas = Train{}
-		query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-		err = tx.Get(
-			&tmas, query,
+	if !aimai {
+		reservations := []Reservation{}
+		query = "SELECT * FROM reservations WHERE date=? AND train_class=? AND train_name=? FOR UPDATE"
+		err = tx.Select(
+			&reservations, query,
 			date.Format("2006/01/02"),
 			req.TrainClass,
 			req.TrainName,
 		)
-		if err == sql.ErrNoRows {
-			tx.Rollback()
-			errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
-			log.Println(err.Error())
-			return
-		}
 		if err != nil {
 			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "列車データの取得に失敗しました")
+			errorResponse(w, http.StatusInternalServerError, "列車予約情報の取得に失敗しました")
 			log.Println(err.Error())
 			return
 		}
 
-		// 予約情報の乗車区間の駅IDを求める
-		reservedfromStation, ok := getStationByName[reservation.Departure]
-		if !ok {
-			tx.Rollback()
-			errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の乗車駅データがみつかりません")
-			log.Println(err.Error())
-			return
-		}
-		reservedtoStation, ok := getStationByName[reservation.Arrival]
-		if !ok {
-			tx.Rollback()
-			errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の降車駅データがみつかりません")
-			log.Println(err.Error())
-			return
-		}
-
-		// 予約の区間重複判定
-		secdup := false
-		if tmas.IsNobori {
-			// 上り
-			if toStation.ID < reservedtoStation.ID && fromStation.ID <= reservedtoStation.ID {
-				// pass
-			} else if toStation.ID >= reservedfromStation.ID && fromStation.ID > reservedfromStation.ID {
-				// pass
-			} else {
-				secdup = true
+		for _, reservation := range reservations {
+			if req.SeatClass == "non-reserved" {
+				break
 			}
-		} else {
-			// 下り
-			if fromStation.ID < reservedfromStation.ID && toStation.ID <= reservedfromStation.ID {
-				// pass
-			} else if fromStation.ID >= reservedtoStation.ID && toStation.ID > reservedtoStation.ID {
-				// pass
-			} else {
-				secdup = true
-			}
-		}
-
-		if secdup {
-			// 区間重複の場合は更に座席の重複をチェックする
-			SeatReservations := []SeatReservation{}
-			query := "SELECT * FROM seat_reservations WHERE reservation_id=? FOR UPDATE"
-			err = tx.Select(
-				&SeatReservations, query,
-				reservation.ReservationId,
+			// train_masterから列車情報を取得(上り・下りが分かる)
+			tmas = Train{}
+			query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+			err = tx.Get(
+				&tmas, query,
+				date.Format("2006/01/02"),
+				req.TrainClass,
+				req.TrainName,
 			)
+			if err == sql.ErrNoRows {
+				tx.Rollback()
+				errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
+				log.Println(err.Error())
+				return
+			}
 			if err != nil {
 				tx.Rollback()
-				errorResponse(w, http.StatusInternalServerError, "座席予約情報の取得に失敗しました")
+				errorResponse(w, http.StatusInternalServerError, "列車データの取得に失敗しました")
 				log.Println(err.Error())
 				return
 			}
 
-			for _, v := range SeatReservations {
-				for _, seat := range req.Seats {
-					if v.CarNumber == req.CarNumber && v.SeatRow == seat.Row && v.SeatColumn == seat.Column {
-						tx.Rollback()
-						fmt.Println("Duplicated ", reservation)
-						errorResponse(w, http.StatusBadRequest, "リクエストに既に予約された席が含まれています")
-						return
+			// 予約情報の乗車区間の駅IDを求める
+			reservedfromStation, ok := getStationByName[reservation.Departure]
+			if !ok {
+				tx.Rollback()
+				errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の乗車駅データがみつかりません")
+				log.Println(err.Error())
+				return
+			}
+			reservedtoStation, ok := getStationByName[reservation.Arrival]
+			if !ok {
+				tx.Rollback()
+				errorResponse(w, http.StatusNotFound, "予約情報に記載された列車の降車駅データがみつかりません")
+				log.Println(err.Error())
+				return
+			}
+
+			// 予約の区間重複判定
+			secdup := false
+			if tmas.IsNobori {
+				// 上り
+				if toStation.ID < reservedtoStation.ID && fromStation.ID <= reservedtoStation.ID {
+					// pass
+				} else if toStation.ID >= reservedfromStation.ID && fromStation.ID > reservedfromStation.ID {
+					// pass
+				} else {
+					secdup = true
+				}
+			} else {
+				// 下り
+				if fromStation.ID < reservedfromStation.ID && toStation.ID <= reservedfromStation.ID {
+					// pass
+				} else if fromStation.ID >= reservedtoStation.ID && toStation.ID > reservedtoStation.ID {
+					// pass
+				} else {
+					secdup = true
+				}
+			}
+
+			if secdup {
+				// 区間重複の場合は更に座席の重複をチェックする
+				SeatReservations := []SeatReservation{}
+				query := "SELECT * FROM seat_reservations WHERE reservation_id=? FOR UPDATE"
+				err = tx.Select(
+					&SeatReservations, query,
+					reservation.ReservationId,
+				)
+				if err != nil {
+					tx.Rollback()
+					errorResponse(w, http.StatusInternalServerError, "座席予約情報の取得に失敗しました")
+					log.Println(err.Error())
+					return
+				}
+
+				for _, v := range SeatReservations {
+					for _, seat := range req.Seats {
+						if v.CarNumber == req.CarNumber && v.SeatRow == seat.Row && v.SeatColumn == seat.Column {
+							tx.Rollback()
+							fmt.Println("Duplicated ", reservation)
+							errorResponse(w, http.StatusBadRequest, "リクエストに既に予約された席が含まれています")
+							return
+						}
 					}
 				}
 			}
 		}
+		// 3段階の予約前チェック終わり
 	}
-	// 3段階の予約前チェック終わり
 
 	// 自由席は強制的にSeats情報をダミーにする（自由席なのに席指定予約は不可）
 	if req.SeatClass == "non-reserved" {
