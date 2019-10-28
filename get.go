@@ -345,10 +345,9 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		SeatRow    int    `json:"seat_row" db:"seat_row"`
 		SeatColumn string `json:"seat_column" db:"seat_column"`
 	}
-	var seatInformationList []SeatInformation
 	resvs := []Resv{}
 	query := `
-	SELECT *
+	SELECT departure,arrival,sm.car_number,sm.seat_row,sm.seat_column
 	FROM seat_master as sm
 	INNER JOIN seat_reservations sr ON sr.car_number = sm.car_number AND sr.seat_row = sm.seat_row AND sr.seat_column = sm.seat_column
 	INNER JOIN reservations r ON r.reservation_id = sr.reservation_id
@@ -391,12 +390,12 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	seatInformationList := []SeatInformation{}
 	for _, seat := range seatList {
 		s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
 		s.IsOccupied = occupiedMap[toKey(carNumber, seat.SeatRow, seat.SeatColumn)]
 		seatInformationList = append(seatInformationList, s)
 	}
-
 	// 各号車の情報
 	c := CarInformation{date.Format("2006/01/02"), trainClass, trainName, carNumber, seatInformationList, initialSimpleCarInformation[trainClassNameToIndex(trainClass)]}
 	resp, err := json.Marshal(c)
