@@ -291,6 +291,7 @@ func getAvailableSeatsChunk(trains []Train, fromStation Station, toStation Stati
 	`
 	err := dbx.Select(&resvs, query)
 	if err != nil {
+		log.Println(query)
 		log.Fatal(err)
 	}
 	result := map[string][]int{}
