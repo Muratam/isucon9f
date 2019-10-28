@@ -11,9 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"sync"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
-	// "sync"
 )
 
 func getSession(r *http.Request) *sessions.Session {
@@ -21,13 +22,32 @@ func getSession(r *http.Request) *sessions.Session {
 	return session
 }
 
+var sessionCache = sync.Map{}
+
+func sessUserID(r *http.Request) (int64, bool) {
+	cookie, err := r.Cookie("session")
+	if err == nil {
+		if val, ok := sessionCache.Load(cookie.Value); ok {
+			return val.(int64), true
+		} else {
+			session := getSession(r)
+			userID, ok := session.Values["user_id"]
+			if !ok {
+				return -1, false
+			}
+			sessionCache.Store(cookie.Value, userID.(int64))
+			return userID.(int64), true
+		}
+	}
+	return -1, false
+}
+
 func getUser(r *http.Request) (user User, errCode int, errMsg string) {
-	session := getSession(r)
-	userID, ok := session.Values["user_id"]
+	userID, ok := sessUserID(r)
 	if !ok {
 		return user, http.StatusUnauthorized, "no session"
 	}
-	if !idToUserServer.Get(strconv.Itoa(int(userID.(int64))), &user) {
+	if !idToUserServer.Get(strconv.Itoa(int(userID)), &user) {
 		return user, http.StatusUnauthorized, "user not found"
 	}
 	return user, http.StatusOK, ""
