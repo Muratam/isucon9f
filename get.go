@@ -95,17 +95,41 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		stations = initialStationsByID
 	}
-
+	type Deps struct {
+		TrainName string `db:"train_name"`
+		Departure string `db:"departure"`
+	}
+	type Arrs struct {
+		TrainName string `db:"train_name"`
+		Arrival   string `db:"arrival"`
+	}
+	depsList := []Deps{}
+	arrsList := []Arrs{}
+	dbx.Select(
+		&depsList,
+		"SELECT departure, train_name FROM train_timetable_master WHERE date=? AND station = ?",
+		date.Format("2006/01/02"),
+		fromStation.Name)
+	dbx.Select(
+		&arrsList,
+		"SELECT arrival, train_name FROM train_timetable_master WHERE date=? AND station = ?",
+		date.Format("2006/01/02"),
+		toStation.Name)
+	deps := map[string]string{}
+	arrs := map[string]string{}
+	for _, dep := range depsList {
+		deps[dep.TrainName] = dep.Departure
+	}
+	for _, arr := range arrsList {
+		arrs[arr.TrainName] = arr.Arrival
+	}
 	trainSearchResponseList := []TrainSearchResponse{}
-
+	mayTrains := []Train{}
 	for _, train := range trainList {
 		isSeekedToFirstStation := false
 		isContainsOriginStation := false
 		isContainsDestStation := false
-		i := 0
-
 		for _, station := range stations {
-
 			// 駅リストを列車の発駅まで読み飛ばして頭出しをする
 			// 列車の発駅以前は止まらないので無視して良い
 			if !isSeekedToFirstStation {
@@ -134,126 +158,81 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				// 駅が見つからないまま当該編成の終点に着いてしまったとき
 				break
 			}
-			i++
 		}
-
-		if isContainsOriginStation && isContainsDestStation {
-			// 列車情報
-			// 所要時間
-			var departure, arrival string
-
-			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainName, fromStation.Name)
-			if err != nil {
-				log.Print("failed to search train: failed to get departure time:", err)
-				errorResponse(w, http.StatusInternalServerError, err.Error())
-				return
+		if !isContainsOriginStation || !isContainsDestStation {
+			continue
+		}
+		departure := deps[train.TrainName]
+		departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
+		if err != nil {
+			log.Print("failed to search train: failed to get departureDate:", err)
+			errorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !date.Before(departureDate) {
+			// 乗りたい時刻より出発時刻が前なので除外
+			continue
+		}
+		mayTrains = append(mayTrains, train)
+		if len(mayTrains) >= 10 {
+			break
+		}
+	}
+	chunk := getAvailableSeatsChunk(mayTrains, fromStation, toStation)
+	for _, train := range mayTrains {
+		departure := deps[train.TrainName]
+		arrival := arrs[train.TrainName]
+		premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats := getAvailableSeatsCount(chunk, train.TrainClass, train.TrainName)
+		// 料金計算
+		premiumFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "premium")
+		if err != nil {
+			log.Print("failed to search train: failed to calc premium fare", err)
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		premiumFare = premiumFare*adult + premiumFare/2*child
+		reservedFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "reserved")
+		if err != nil {
+			log.Print("failed to search train: failed to calc reserved fare", err)
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		reservedFare = reservedFare*adult + reservedFare/2*child
+		nonReservedFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "non-reserved")
+		if err != nil {
+			log.Print("failed to search train: failed to calc non reserved fare", err)
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		nonReservedFare = nonReservedFare*adult + nonReservedFare/2*child
+		toMark := func(x int) string {
+			if x == 0 {
+				return "×"
 			}
-
-			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
-			if err != nil {
-				log.Print("failed to search train: failed to get departureDate:", err)
-				errorResponse(w, http.StatusInternalServerError, err.Error())
-				return
+			if x < 10 {
+				return "△"
 			}
-
-			if !date.Before(departureDate) {
-				// 乗りたい時刻より出発時刻が前なので除外
-				continue
-			}
-
-			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainName, toStation.Name)
-			if err != nil {
-				log.Print("failed to search train: failed to get arrival time:", err)
-				errorResponse(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-
-			premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats, err := train.getAvailableSeatsCount(fromStation, toStation)
-			if err != nil {
-				log.Print("failed to search train: failed to get available seats count", err)
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-
-			premium_avail := "○"
-			if premium_avail_seats == 0 {
-				premium_avail = "×"
-			} else if premium_avail_seats < 10 {
-				premium_avail = "△"
-			}
-
-			premium_smoke_avail := "○"
-			if premium_smoke_avail_seats == 0 {
-				premium_smoke_avail = "×"
-			} else if premium_smoke_avail_seats < 10 {
-				premium_smoke_avail = "△"
-			}
-
-			reserved_avail := "○"
-			if reserved_avail_seats == 0 {
-				reserved_avail = "×"
-			} else if reserved_avail_seats < 10 {
-				reserved_avail = "△"
-			}
-
-			reserved_smoke_avail := "○"
-			if reserved_smoke_avail_seats == 0 {
-				reserved_smoke_avail = "×"
-			} else if reserved_smoke_avail_seats < 10 {
-				reserved_smoke_avail = "△"
-			}
-
-			// 空席情報
-			seatAvailability := map[string]string{
-				"premium":        premium_avail,
-				"premium_smoke":  premium_smoke_avail,
-				"reserved":       reserved_avail,
-				"reserved_smoke": reserved_smoke_avail,
-				"non_reserved":   "○",
-			}
-
-			// 料金計算
-			premiumFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "premium")
-			if err != nil {
-				log.Print("failed to search train: failed to calc premium fare", err)
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			premiumFare = premiumFare*adult + premiumFare/2*child
-
-			reservedFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "reserved")
-			if err != nil {
-				log.Print("failed to search train: failed to calc reserved fare", err)
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			reservedFare = reservedFare*adult + reservedFare/2*child
-
-			nonReservedFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "non-reserved")
-			if err != nil {
-				log.Print("failed to search train: failed to calc non reserved fare", err)
-				errorResponse(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			nonReservedFare = nonReservedFare*adult + nonReservedFare/2*child
-
-			fareInformation := map[string]int{
-				"premium":        premiumFare,
-				"premium_smoke":  premiumFare,
-				"reserved":       reservedFare,
-				"reserved_smoke": reservedFare,
-				"non_reserved":   nonReservedFare,
-			}
-
-			trainSearchResponseList = append(trainSearchResponseList, TrainSearchResponse{
+			return "○"
+		}
+		trainSearchResponseList = append(trainSearchResponseList,
+			TrainSearchResponse{
 				train.TrainClass, train.TrainName, train.StartStation, train.LastStation,
-				fromStation.Name, toStation.Name, departure, arrival, seatAvailability, fareInformation,
+				fromStation.Name, toStation.Name, departure, arrival,
+				map[string]string{
+					"premium":        toMark(premium_avail_seats),
+					"premium_smoke":  toMark(premium_smoke_avail_seats),
+					"reserved":       toMark(reserved_avail_seats),
+					"reserved_smoke": toMark(reserved_smoke_avail_seats),
+					"non_reserved":   "○",
+				},
+				map[string]int{
+					"premium":        premiumFare,
+					"premium_smoke":  premiumFare,
+					"reserved":       reservedFare,
+					"reserved_smoke": reservedFare,
+					"non_reserved":   nonReservedFare,
+				},
 			})
-
-			if len(trainSearchResponseList) >= 10 {
-				break
-			}
-		}
 	}
 	resp, err := json.Marshal(trainSearchResponseList)
 	if err != nil {

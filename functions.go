@@ -261,51 +261,87 @@ var availableSeatMapss = func() [][]map[int]bool {
 	return result
 }()
 
-func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station) (int, int, int, int, error) {
+// train_name+train_class 毎に返却
+func getAvailableSeatsChunk(trains []Train, fromStation Station, toStation Station) map[string][]int {
 	// 指定種別の空き座席を返す
-	var err error
-
-	// すでに取られている予約を取得する
+	type Resv struct {
+		TrainClass string `json:"train_class" db:"train_class"`
+		TrainName  string `json:"train_name" db:"train_name"`
+		Departure  string `json:"departure" db:"departure"`
+		Arrival    string `json:"arrival" db:"arrival"`
+		CarNumber  int    `json:"car_number,omitempty" db:"car_number"`
+		SeatRow    int    `json:"seat_row" db:"seat_row"`
+		SeatColumn string `json:"seat_column" db:"seat_column"`
+	}
+	values := ""
+	for i, train := range trains {
+		values += ` SELECT "` + train.TrainClass + `","` + train.TrainName + `" `
+		if i != len(trains)-1 {
+			values += " union all "
+		}
+	}
+	resvs := []Resv{}
 	query := `
-	SELECT sr.reservation_id, sr.car_number, sr.seat_row, sr.seat_column
-	FROM seat_reservations sr, reservations r, seat_master s, station_master std, station_master sta
-	WHERE
-		r.train_name=? AND
-		r.train_class=? AND
-		r.reservation_id=sr.reservation_id AND
-		s.train_class=r.train_class AND
-		s.car_number=sr.car_number AND
-		s.seat_column=sr.seat_column AND
-		s.seat_row=sr.seat_row AND
-		std.name=r.departure AND
-		sta.name=r.arrival
+	WITH t(train_class,train_name) as (` + values + `)
+	SELECT r.train_class,r.train_name,departure,arrival,car_number,seat_row,seat_column
+	FROM reservations r
+	INNER JOIN seat_reservations s
+		ON r.reservation_id = s.reservation_id
+	INNER JOIN t
+	  ON t.train_class = r.train_class AND t.train_name = r.train_name
 	`
-	if train.IsNobori {
-		query += "AND ((sta.id < ? AND ? <= std.id) OR (sta.id < ? AND ? <= std.id) OR (? < sta.id AND std.id < ?))"
-	} else {
-		query += "AND ((std.id <= ? AND ? < sta.id) OR (std.id <= ? AND ? < sta.id) OR (sta.id < ? AND ? < std.id))"
-	}
-
-	seatReservationList := []SeatReservation{}
-	err = dbx.Select(&seatReservationList, query, train.TrainName, train.TrainClass, fromStation.ID, fromStation.ID, toStation.ID, toStation.ID, fromStation.ID, toStation.ID)
+	err := dbx.Select(&resvs, query)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		log.Println(query)
+		log.Fatal(err)
 	}
-	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(train.TrainClass)]
+	result := map[string][]int{}
+	for _, resv := range resvs {
+		xx, _ := strconv.Atoi(resv.TrainName)
+		isNobori := xx%2 == 1
+		departureStation, _ := getStationByName[resv.Departure]
+		arrivalStation, _ := getStationByName[resv.Arrival]
+		if isNobori { // 上り
+			if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+				continue
+			} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+				continue
+			}
+		} else { // 下り
+			if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+				continue
+			} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+				continue
+			}
+		}
+		key := resv.CarNumber*1000 + resv.SeatRow*10 + SeatClassNameToIndex(resv.SeatColumn)
+		trkey := resv.TrainName + resv.TrainClass
+		if pre, ok := result[trkey]; ok {
+			result[trkey] = append(pre, key)
+		} else {
+			result[trkey] = []int{key}
+		}
+	}
+	return result
+}
+func getAvailableSeatsCount(chunk map[string][]int, trainClass string, trainName string) (int, int, int, int) {
+	availableSeatMaps := availableSeatMapss[trainClassNameToIndex(trainClass)]
 	embeds := make([]map[int]bool, 4)
 	for i := 0; i < 4; i++ {
 		embeds[i] = map[int]bool{}
 	}
-	for _, seatReservation := range seatReservationList {
-		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
-		for i := 0; i < 4; i++ {
-			if availableSeatMaps[i][key] {
-				embeds[i][key] = true
+	trkey := trainName + trainClass
+	if _, ok := chunk[trkey]; ok {
+		for _, key := range chunk[trkey] {
+			for i := 0; i < 4; i++ {
+				if availableSeatMaps[i][key] {
+					embeds[i][key] = true
+				}
 			}
 		}
 	}
 	return len(availableSeatMaps[0]) - len(embeds[0]),
 		len(availableSeatMaps[1]) - len(embeds[1]),
 		len(availableSeatMaps[2]) - len(embeds[2]),
-		len(availableSeatMaps[3]) - len(embeds[3]), nil
+		len(availableSeatMaps[3]) - len(embeds[3])
 }
