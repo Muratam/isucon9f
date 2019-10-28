@@ -183,11 +183,10 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			for _, seat := range seatList {
 				s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
 				reservationList := []Reservation{}
-				query = "SELECT r.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
+				query = "SELECT r.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
 				err = dbx.Select(
 					&reservationList, query,
 					date.Format("2006/01/02"),
-					seat.TrainClass,
 					req.TrainName,
 					seat.CarNumber,
 					seat.SeatRow,
@@ -314,12 +313,18 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	// 当該列車・列車名の予約一覧取得
 	tx := dbx.MustBegin()
 	if !aimai {
+		// train_masterから列車情報を取得(上り・下りが分かる)
+		tmas, err := getTrainWithClass(date, req.TrainName, req.TrainClass)
+		if err != nil {
+			tx.Rollback()
+			errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
+			return
+		}
 		reservations := []Reservation{}
-		query = "SELECT * FROM reservations WHERE date=? AND train_class=? AND train_name=? FOR UPDATE"
+		query = "SELECT * FROM reservations WHERE date=? AND train_name=? FOR UPDATE"
 		err = tx.Select(
 			&reservations, query,
 			date.Format("2006/01/02"),
-			req.TrainClass,
 			req.TrainName,
 		)
 		if err != nil {
@@ -333,28 +338,6 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			if req.SeatClass == "non-reserved" {
 				break
 			}
-			// train_masterから列車情報を取得(上り・下りが分かる)
-			tmas = Train{}
-			query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
-			err = tx.Get(
-				&tmas, query,
-				date.Format("2006/01/02"),
-				req.TrainClass,
-				req.TrainName,
-			)
-			if err == sql.ErrNoRows {
-				tx.Rollback()
-				errorResponse(w, http.StatusNotFound, "列車データがみつかりません")
-				log.Println(err.Error())
-				return
-			}
-			if err != nil {
-				tx.Rollback()
-				errorResponse(w, http.StatusInternalServerError, "列車データの取得に失敗しました")
-				log.Println(err.Error())
-				return
-			}
-
 			// 予約情報の乗車区間の駅IDを求める
 			reservedfromStation, ok := getStationByName[reservation.Departure]
 			if !ok {
