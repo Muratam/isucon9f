@@ -143,7 +143,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			// 所要時間
 			var departure, arrival string
 
-			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, fromStation.Name)
+			err = dbx.Get(&departure, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, fromStation.Name)
 			if err != nil {
 				log.Print("failed to search train: failed to get departure time:", err)
 				errorResponse(w, http.StatusInternalServerError, err.Error())
@@ -156,7 +156,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			departureDate = departureDate.Add(time.Duration(2) * time.Minute)
 
 			if !date.Before(departureDate) {
 				// 乗りたい時刻より出発時刻が前なので除外
