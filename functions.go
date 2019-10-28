@@ -275,18 +275,19 @@ func getAvailableSeatsChunk(trains []Train, fromStation Station, toStation Stati
 	}
 	values := ""
 	for i, train := range trains {
-		values += ` ("` + train.TrainClass + `","` + train.TrainName + `") `
+		values += ` SELECT "` + train.TrainClass + `","` + train.TrainName + `" `
 		if i != len(trains)-1 {
-			values += ","
+			values += " union all "
 		}
 	}
 	resvs := []Resv{}
 	query := `
+	WITH t(train_class,train_name) as (` + values + `)
 	SELECT r.train_class,r.train_name,departure,arrival,car_number,seat_row,seat_column
 	FROM reservations r
 	INNER JOIN seat_reservations s
 		ON r.reservation_id = s.reservation_id
-	INNER JOIN (values ` + values + `) t(train_class,train_name)
+	INNER JOIN
 	  ON t.train_class = r.train_class AND t.train_name = r.train_name
 	`
 	err := dbx.Select(&resvs, query)
