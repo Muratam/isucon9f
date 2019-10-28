@@ -348,7 +348,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 	var seatInformationList []SeatInformation
 	resvs := []Resv{}
 	query := `
-	SELECT departure,arrival,car_number,seat_row,seat_column
+	SELECT *
 	FROM (SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column) as sm
 	INNER JOIN seat_reservations sr ON sr.car_number = sm.car_number AND sr.seat_row = sm.seat_row AND sr.seat_column = sm.seat_column
 	INNER JOIN reservations r ON r.reservation_id=sr.reservation_id
