@@ -287,7 +287,7 @@ func getAvailableSeatsChunk(trains []Train, fromStation Station, toStation Stati
 	FROM reservations r
 	INNER JOIN seat_reservations s
 		ON r.reservation_id = s.reservation_id
-	INNER JOIN
+	INNER JOIN t
 	  ON t.train_class = r.train_class AND t.train_name = r.train_name
 	`
 	err := dbx.Select(&resvs, query)
