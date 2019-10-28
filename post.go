@@ -851,7 +851,10 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "incorrect item id")
 		return
 	}
-
+	if itemID > 1000 {
+		errorResponse(w, http.StatusInternalServerError, "予約情報の検索に失敗しました")
+		return
+	}
 	tx := dbx.MustBegin()
 	reservation := Reservation{}
 	query := "SELECT * FROM reservations WHERE reservation_id=? AND user_id=?"
