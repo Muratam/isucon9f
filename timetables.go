@@ -1,5 +1,7 @@
 package main
 
+// arrival は固定.
+
 // "SELECT  FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?"
 // 東京->大阪, 1: 東京->京都, 2:東京->名古屋
 // date + train_name で絞れている([最速,中間,遅いやつ])

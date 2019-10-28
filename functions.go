@@ -263,31 +263,23 @@ var availableSeatMapss = func() [][]map[int]bool {
 
 func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station) (int, int, int, int, error) {
 	// 指定種別の空き座席を返す
-	var err error
-
-	// すでに取られている予約を取得する
-	query := `
-	SELECT sr.reservation_id, sr.car_number, sr.seat_row, sr.seat_column
-	FROM seat_reservations sr, reservations r, seat_master s, station_master std, station_master sta
-	WHERE
-		r.train_name=? AND
-		r.train_class=? AND
-		r.reservation_id=sr.reservation_id AND
-		s.train_class=r.train_class AND
-		s.car_number=sr.car_number AND
-		s.seat_column=sr.seat_column AND
-		s.seat_row=sr.seat_row AND
-		std.name=r.departure AND
-		sta.name=r.arrival
-	`
-	if train.IsNobori {
-		query += "AND ((sta.id < ? AND ? <= std.id) OR (sta.id < ? AND ? <= std.id) OR (? < sta.id AND std.id < ?))"
-	} else {
-		query += "AND ((std.id <= ? AND ? < sta.id) OR (std.id <= ? AND ? < sta.id) OR (sta.id < ? AND ? < std.id))"
+	type Resv struct {
+		Departure  string `json:"departure" db:"departure"`
+		Arrival    string `json:"arrival" db:"arrival"`
+		CarNumber  int    `json:"car_number,omitempty" db:"car_number"`
+		SeatRow    int    `json:"seat_row" db:"seat_row"`
+		SeatColumn string `json:"seat_column" db:"seat_column"`
 	}
+	resvs := []Resv{}
+	query := `
+	SELECT departure,arrival,car_number,seat_row,seat_column
+	FROM seat_reservations s
+	INNER JOIN reservations r
+		ON r.reservation_id = s.reservation_id
+	WHERE r.date=? AND r.train_name=?
+	`
+	err := dbx.Select(&resvs, query, train.Date, train.TrainName)
 
-	seatReservationList := []SeatReservation{}
-	err = dbx.Select(&seatReservationList, query, train.TrainName, train.TrainClass, fromStation.ID, fromStation.ID, toStation.ID, toStation.ID, fromStation.ID, toStation.ID)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -296,14 +288,30 @@ func (train Train) getAvailableSeatsCount(fromStation Station, toStation Station
 	for i := 0; i < 4; i++ {
 		embeds[i] = map[int]bool{}
 	}
-	for _, seatReservation := range seatReservationList {
-		key := seatReservation.CarNumber*1000 + seatReservation.SeatRow*10 + SeatClassNameToIndex(seatReservation.SeatColumn)
+	for _, resv := range resvs {
+		departureStation, _ := getStationByName[resv.Departure]
+		arrivalStation, _ := getStationByName[resv.Arrival]
+		if train.IsNobori { // 上り
+			if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+				continue
+			} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+				continue
+			}
+		} else { // 下り
+			if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+				continue
+			} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+				continue
+			}
+		}
+		key := resv.CarNumber*1000 + resv.SeatRow*10 + SeatClassNameToIndex(resv.SeatColumn)
 		for i := 0; i < 4; i++ {
 			if availableSeatMaps[i][key] {
 				embeds[i][key] = true
 			}
 		}
 	}
+
 	return len(availableSeatMaps[0]) - len(embeds[0]),
 		len(availableSeatMaps[1]) - len(embeds[1]),
 		len(availableSeatMaps[2]) - len(embeds[2]),
