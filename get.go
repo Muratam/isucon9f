@@ -122,8 +122,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		stations = initialStationsByID
 	}
-	// fmt.Println("From", fromStation)
-	// fmt.Println("To", toStation)
 
 	trainSearchResponseList := []TrainSearchResponse{}
 
@@ -323,7 +321,6 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 対象列車の取得
 	train, err := getTrainWithClass(date, trainName, trainClass)
-	fmt.Println(date, trainName, trainClass, train, err)
 	if err != nil {
 		errorResponse(w, http.StatusNotFound, "列車が存在しません")
 		return
@@ -419,27 +416,11 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 			}
 		}
-
-		fmt.Println(s.IsOccupied)
 		seatInformationList = append(seatInformationList, s)
 	}
 
 	// 各号車の情報
-
-	simpleCarInformationList := []SimpleCarInformation{}
-	seat := Seat{}
-	query = "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column LIMIT 1"
-	i := 1
-	for {
-		err = dbx.Get(&seat, query, trainClass, i)
-		if err != nil {
-			break
-		}
-		simpleCarInformationList = append(simpleCarInformationList, SimpleCarInformation{i, seat.SeatClass})
-		i = i + 1
-	}
-
-	c := CarInformation{date.Format("2006/01/02"), trainClass, trainName, carNumber, seatInformationList, simpleCarInformationList}
+	c := CarInformation{date.Format("2006/01/02"), trainClass, trainName, carNumber, seatInformationList, initialSimpleCarInformation[trainClassNameToIndex(trainClass)]}
 	resp, err := json.Marshal(c)
 	if err != nil {
 		log.Print("failed to get seats: failed to json.Marshal", err)

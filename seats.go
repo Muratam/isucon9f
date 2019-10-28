@@ -1,7 +1,5 @@
 package main
 
-import "sort"
-
 var initialSeats = []Seat{
 	Seat{"最速", 1, "A", 1, "non-reserved", false},
 	Seat{"最速", 1, "B", 1, "non-reserved", false},
@@ -4027,17 +4025,59 @@ func getSeatsWithIsSmoking(isSmoking bool, seatClass string, trainClass string) 
 	}
 }
 
-// "SELECT * FROM seat_master WHERE train_class=? AND car_number=? ORDER BY seat_row, seat_column"
-func getSeatsOrderBySeatRowSeatColumn(seatClass string, trainClass string) []Seat {
-	// WARN: もっと速くできる
-	is0 := getSeatsWithIsSmoking(false, seatClass, trainClass)
-	is1 := getSeatsWithIsSmoking(true, seatClass, trainClass)
-	result := append(is0, is1...)
-	sort.Slice(&result, func(i, j int) bool {
-		return result[i].SeatRow < result[j].SeatRow
-	})
-	sort.Slice(&result, func(i, j int) bool {
-		return result[i].SeatColumn < result[j].SeatColumn
-	})
-	return result
+var initialSimpleCarInformation = [][]SimpleCarInformation{
+	[]SimpleCarInformation{
+		SimpleCarInformation{1, "non-reserved"},
+		SimpleCarInformation{2, "non-reserved"},
+		SimpleCarInformation{3, "non-reserved"},
+		SimpleCarInformation{4, "reserved"},
+		SimpleCarInformation{5, "reserved"},
+		SimpleCarInformation{6, "reserved"},
+		SimpleCarInformation{7, "reserved"},
+		SimpleCarInformation{8, "premium"},
+		SimpleCarInformation{9, "premium"},
+		SimpleCarInformation{10, "premium"},
+		SimpleCarInformation{11, "reserved"},
+		SimpleCarInformation{12, "reserved"},
+		SimpleCarInformation{13, "reserved"},
+		SimpleCarInformation{14, "reserved"},
+		SimpleCarInformation{15, "reserved"},
+		SimpleCarInformation{16, "reserved"},
+	},
+	[]SimpleCarInformation{
+		SimpleCarInformation{1, "non-reserved"},
+		SimpleCarInformation{2, "non-reserved"},
+		SimpleCarInformation{3, "non-reserved"},
+		SimpleCarInformation{4, "non-reserved"},
+		SimpleCarInformation{5, "non-reserved"},
+		SimpleCarInformation{6, "reserved"},
+		SimpleCarInformation{7, "reserved"},
+		SimpleCarInformation{8, "premium"},
+		SimpleCarInformation{9, "premium"},
+		SimpleCarInformation{10, "premium"},
+		SimpleCarInformation{11, "reserved"},
+		SimpleCarInformation{12, "reserved"},
+		SimpleCarInformation{13, "reserved"},
+		SimpleCarInformation{14, "reserved"},
+		SimpleCarInformation{15, "reserved"},
+		SimpleCarInformation{16, "reserved"},
+	},
+	[]SimpleCarInformation{
+		SimpleCarInformation{1, "non-reserved"},
+		SimpleCarInformation{2, "non-reserved"},
+		SimpleCarInformation{3, "non-reserved"},
+		SimpleCarInformation{4, "non-reserved"},
+		SimpleCarInformation{5, "non-reserved"},
+		SimpleCarInformation{6, "non-reserved"},
+		SimpleCarInformation{7, "non-reserved"},
+		SimpleCarInformation{8, "premium"},
+		SimpleCarInformation{9, "premium"},
+		SimpleCarInformation{10, "premium"},
+		SimpleCarInformation{11, "non-reserved"},
+		SimpleCarInformation{12, "non-reserved"},
+		SimpleCarInformation{13, "non-reserved"},
+		SimpleCarInformation{14, "non-reserved"},
+		SimpleCarInformation{15, "non-reserved"},
+		SimpleCarInformation{16, "reserved"},
+	},
 }
