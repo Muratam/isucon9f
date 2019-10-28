@@ -123,6 +123,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	for _, arr := range arrsList {
 		arrs[arr.TrainName] = arr.Arrival
 	}
+	chunk := getAvailableSeatsChunk(fromStation, toStation)
 	trainSearchResponseList := []TrainSearchResponse{}
 	for _, train := range trainList {
 		isSeekedToFirstStation := false
@@ -173,13 +174,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		arrival := arrs[train.TrainName]
-		premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats, err := getAvailableSeatsCount(train.TrainClass, train.TrainName, fromStation, toStation)
-		if err != nil {
-			log.Print("failed to search train: failed to get available seats count", err)
-			errorResponse(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
+		premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats := getAvailableSeatsCount(chunk, train.TrainClass, train.TrainName)
 		// 料金計算
 		premiumFare, err := fareCalc(date, fromStation.ID, toStation.ID, train.TrainClass, "premium")
 		if err != nil {
