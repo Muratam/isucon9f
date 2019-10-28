@@ -262,7 +262,7 @@ var availableSeatMapss = func() [][]map[int]bool {
 }()
 
 // train_name+train_class 毎に返却
-func getAvailableSeatsChunk(fromStation Station, toStation Station) map[string][]int {
+func getAvailableSeatsChunk(trains []Train, fromStation Station, toStation Station) map[string][]int {
 	// 指定種別の空き座席を返す
 	type Resv struct {
 		TrainClass string `json:"train_class" db:"train_class"`
@@ -273,14 +273,20 @@ func getAvailableSeatsChunk(fromStation Station, toStation Station) map[string][
 		SeatRow    int    `json:"seat_row" db:"seat_row"`
 		SeatColumn string `json:"seat_column" db:"seat_column"`
 	}
+	allowed := make([]string, len(trains))
+	for i, train := range trains {
+		allowed[i] = train.TrainName
+	}
+	// 3倍ありそう
 	resvs := []Resv{}
 	query := `
 	SELECT train_class,train_name,departure,arrival,car_number,seat_row,seat_column
 	FROM reservations r
 	INNER JOIN seat_reservations s
 		ON r.reservation_id = s.reservation_id
+	WHERE r.train_name IN ?
 	`
-	dbx.Select(&resvs, query)
+	dbx.Select(&resvs, query, allowed)
 	result := map[string][]int{}
 	for _, resv := range resvs {
 		xx, _ := strconv.Atoi(resv.TrainName)

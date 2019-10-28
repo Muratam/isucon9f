@@ -123,8 +123,8 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	for _, arr := range arrsList {
 		arrs[arr.TrainName] = arr.Arrival
 	}
-	chunk := getAvailableSeatsChunk(fromStation, toStation)
 	trainSearchResponseList := []TrainSearchResponse{}
+	mayTrains := []Train{}
 	for _, train := range trainList {
 		isSeekedToFirstStation := false
 		isContainsOriginStation := false
@@ -173,6 +173,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			// 乗りたい時刻より出発時刻が前なので除外
 			continue
 		}
+		mayTrains = append(mayTrains, train)
+		if len(mayTrains) >= 10 {
+			break
+		}
+	}
+	chunk := getAvailableSeatsChunk(mayTrains, fromStation, toStation)
+	for _, train := range mayTrains {
+		departure := deps[train.TrainName]
 		arrival := arrs[train.TrainName]
 		premium_avail_seats, premium_smoke_avail_seats, reserved_avail_seats, reserved_smoke_avail_seats := getAvailableSeatsCount(chunk, train.TrainClass, train.TrainName)
 		// 料金計算
@@ -225,9 +233,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 					"non_reserved":   nonReservedFare,
 				},
 			})
-		if len(trainSearchResponseList) >= 10 {
-			break
-		}
 	}
 	resp, err := json.Marshal(trainSearchResponseList)
 	if err != nil {
