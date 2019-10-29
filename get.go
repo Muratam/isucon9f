@@ -32,6 +32,32 @@ func getStationsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(initialStationsByID)
 }
 
+type Deps struct {
+	TrainName string `db:"train_name"`
+	Station   string `db:"station"`
+	Departure string `db:"departure"`
+	Arrival   string `db:"arrival"`
+}
+
+// date+name
+var depsCache = map[string][]Deps{}
+
+func getTimetableMaster(date time.Time, trainName string) []Deps {
+	dateStr := date.Format("2006/01/02")
+	key := dateStr + ":" + trainName
+	if val, ok := depsCache[key]; ok {
+		return val
+	}
+	result := []Deps{}
+	dbx.Select(
+		&result,
+		"SELECT departure, train_name,arrival,station FROM train_timetable_master WHERE date=? AND station = ?",
+		dateStr,
+		trainName)
+	depsCache[key] = result
+	return result
+}
+
 func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	// 列車検索
 	// GET /train/search?use_at=<ISO8601形式の時刻> & from=東京 & to=大阪
@@ -95,24 +121,8 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		stations = initialStationsByID
 	}
-	type Deps struct {
-		TrainName string `db:"train_name"`
-		Station   string `db:"station"`
-		Departure string `db:"departure"`
-		Arrival   string `db:"arrival"`
-	}
-	depsList := []Deps{}
-	arrsList := []Deps{}
-	dbx.Select(
-		&depsList,
-		"SELECT departure, train_name,arrival,station FROM train_timetable_master WHERE date=? AND station = ?",
-		date.Format("2006/01/02"),
-		fromStation.Name)
-	dbx.Select(
-		&arrsList,
-		"SELECT arrival, train_name,departure,station FROM train_timetable_master WHERE date=? AND station = ?",
-		date.Format("2006/01/02"),
-		toStation.Name)
+	depsList := getTimetableMaster(date, fromStation.Name)
+	arrsList := getTimetableMaster(date, toStation.Name)
 	deps := map[string]string{}
 	arrs := map[string]string{}
 	for _, dep := range depsList {
