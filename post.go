@@ -698,7 +698,7 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	superSecurePassword := pbkdf2.Key([]byte(user.Password), salt, 1, 256, sha256.New)
 
-	_, err = dbx.Exec(
+	result, err := dbx.Exec(
 		"INSERT INTO `users` (`email`, `salt`, `super_secure_password`) VALUES (?, ?, ?)",
 		user.Email,
 		salt,
@@ -706,9 +706,9 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	user.Salt = salt
 	user.HashedPassword = superSecurePassword
-	l := idToUserServer.DBSize() + 1
+	l, _ := result.LastInsertId()
 	user.ID = int64(l)
-	idToUserServer.Set(strconv.Itoa(l), user)
+	idToUserServer.Set(strconv.Itoa(int(l)),user)
 	if err != nil {
 		log.Print("failed to sign up: failed to exec insert:", err)
 		errorResponse(w, http.StatusBadRequest, "user registration failed")
@@ -866,6 +866,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		log.Print("failed to userReservationCancel: failed to get reservation:", err)
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "予約情報の検索に失敗しました")
+		return
 	}
 	if reservation.Status == "rejected" {
 		tx.Rollback()
@@ -897,6 +898,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	if reservation.Status == "done" {
 		cancelCh <- reservation.PaymentId
 	}
+
 
 	messageResponse(w, "cancell complete")
 }
