@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"goji.io/pat"
@@ -41,21 +40,21 @@ type Deps struct {
 }
 
 // date+name
-var depsCache = sync.Map{}
+// var depsCache = sync.Map{}
 
 func getTimetableMaster(date time.Time, trainName string) []Deps {
 	dateStr := date.Format("2006/01/02")
-	key := dateStr + ":" + trainName
-	if val, ok := depsCache.Load(key); ok {
-		return val.([]Deps)
-	}
+	// key := dateStr + ":" + trainName
+	// if val, ok := depsCache.Load(key); ok {
+	// 	return val.([]Deps)
+	// }
 	result := []Deps{}
 	dbx.Select(
 		&result,
 		"SELECT departure, train_name,arrival,station FROM train_timetable_master WHERE date=? AND station = ?",
 		dateStr,
 		trainName)
-	depsCache.Store(key, result)
+	// depsCache.Store(key, result)
 	return result
 }
 
