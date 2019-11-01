@@ -644,6 +644,7 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	output := PaymentResponse{}
 	err = json.Unmarshal(body, &output)
 	if err != nil {
+		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "JSON parseに失敗しました")
 		log.Println(err.Error())
 		return
@@ -657,6 +658,7 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		output.PaymentId,
 		req.ReservationId,
 	)
+	fmt.Println(output.PaymentId)
 	if err != nil {
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "予約情報の更新に失敗しました")
@@ -675,7 +677,10 @@ func reservationPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tx.Commit()
-	w.Write(response)
+	_, err = w.Write(response)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
 }
 
 func signUpHandler(w http.ResponseWriter, r *http.Request) {
@@ -839,6 +844,11 @@ var cancelCh = func() chan string {
 	return ch
 }()
 
+type errorMessage struct {
+	IsError bool `json:"is_error"`
+	Message string `json:"message"`
+}
+
 func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	user, errCode, errMsg := getUser(r)
 	if errCode != http.StatusOK {
@@ -847,6 +857,18 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	itemIDStr := pat.Param(r, "item_id")
 	itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
+	user_json, _ := json.Marshal(user)
+	resp, err := http.Post("http://172.24.122.187/api/user/reservations/"+itemIDStr+"/cancel2", "application/json", bytes.NewBuffer(user_json))
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	var em errorMessage
+	json.Unmarshal(body, &em)
+	if em.IsError {
+		errorResponse(w, resp.StatusCode, em.Message)
+	} else {
+		messageResponse(w, em.Message)
+	}
+	return
 	if err != nil || itemID <= 0 {
 		log.Print("failed to userReservationCancel: failed to strconv.ParseInt:", err)
 		errorResponse(w, http.StatusBadRequest, "incorrect item id")
