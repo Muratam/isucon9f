@@ -8,5 +8,6 @@ require (
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/shamaton/msgpack v1.1.1
 	goji.io v2.0.2+incompatible
-	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc
+	golang.org/x/crypto v0.1.0
+	google.golang.org/appengine v1.6.7 // indirect
 )
